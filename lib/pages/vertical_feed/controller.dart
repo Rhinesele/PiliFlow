@@ -8,12 +8,12 @@ import 'package:PiliPlus/models/home/rcmd/result.dart';
 import 'package:PiliPlus/pages/common/common_controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
+import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:flutter/widgets.dart' show ScrollController;
 import 'package:get/get.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 class VerticalFeedController extends GetxController
@@ -86,8 +86,8 @@ class VerticalFeedController extends GetxController
             unawaited(playIndex(0));
           }
         }
-      } else if (res case Error(:final message)) {
-        error.value = message;
+      } else if (res case Error(:final errMsg)) {
+        error.value = errMsg;
       }
     } catch (e) {
       if (!_disposed) error.value = e.toString();
@@ -158,8 +158,8 @@ class VerticalFeedController extends GetxController
           await player.setVolume(0, showIndicator: false);
         }
         await player.play();
-      } else if (res case Error(:final message)) {
-        error.value = message;
+      } else if (res case Error(:final errMsg)) {
+        error.value = errMsg;
       }
     } catch (e) {
       if (!_disposed && token == _loadToken) error.value = e.toString();
