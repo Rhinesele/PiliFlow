@@ -4,274 +4,315 @@ import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 class VerticalFeedPage extends StatefulWidget {
-  const VerticalFeedPage({super.key});
+const VerticalFeedPage({super.key});
 
-  @override
-  State<VerticalFeedPage> createState() => _VerticalFeedPageState();
+@override
+State<VerticalFeedPage> createState() => _VerticalFeedPageState();
 }
 
 class _VerticalFeedPageState extends State<VerticalFeedPage>
-    with AutomaticKeepAliveClientMixin {
-  late final VerticalFeedController controller = Get.put(
-    VerticalFeedController(),
-  );
+with AutomaticKeepAliveClientMixin {
+late final VerticalFeedController controller = Get.put(
+VerticalFeedController(),
+);
 
-  final pageController = PageController();
+final pageController = PageController();
 
-  @override
-  bool get wantKeepAlive => true;
+@override
+bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
+@override
+void initState() {
+super.initState();
 
-    controller.onCompleted = (index) {
-      if (pageController.hasClients) {
-        pageController.animateToPage(
-          index,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOut,
-        );
-      }
-    };
-  }
-
-  @override
-  void dispose() {
-    controller.onCompleted = null;
-    pageController.dispose();
-
-    if (Get.isRegistered<VerticalFeedController>()) {
-      Get.delete<VerticalFeedController>();
-    }
-
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          Obx(() {
-            if (controller.videos.isEmpty) {
-              return _loadingOrError();
-            }
-
-            return PageView.builder(
-              controller: pageController,
-              scrollDirection: Axis.vertical,
-              itemCount: controller.videos.length,
-              onPageChanged: (index) {
-                controller.playIndex(index);
-
-                if (index >= controller.videos.length - 3) {
-                  controller.loadMore();
-                }
-              },
-              itemBuilder: (context, index) {
-                final item = controller.videos[index];
-
-                return _VideoPage(
-                  key: ValueKey(item.bvid ?? item.aid),
-                  controller: controller,
-                  index: index,
-                  title: item.title ?? '',
-                  owner: item.owner?.name ?? '',
-                );
-              },
-            );
-          }),
-
-          // 左上角返回主页
-          Positioned(
-            top: 0,
-            left: 0,
-            child: SafeArea(
-              child: IconButton(
-                tooltip: '返回主页',
-                onPressed: () {
-                  Get.back();
-                },
-                icon: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white,
-                  size: 25,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+controller.onCompleted = (index) {
+  if (pageController.hasClients) {
+    pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
     );
   }
+};
 
-  Widget _loadingOrError() {
-    return Center(
-      child: Obx(() {
-        if (controller.error.value != null) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                color: Colors.white,
-                size: 42,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                controller.error.value!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white),
-              ),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: controller.loadMore,
-                child: const Text('重试'),
-              ),
-            ],
+}
+
+@override
+void dispose() {
+controller.onCompleted = null;
+pageController.dispose();
+
+if (Get.isRegistered<VerticalFeedController>()) {
+  Get.delete<VerticalFeedController>();
+}
+
+super.dispose();
+
+}
+
+@override
+Widget build(BuildContext context) {
+super.build(context);
+
+return Scaffold(
+  backgroundColor: Colors.black,
+  body: Stack(
+    children: [
+      Obx(() {
+        if (controller.videos.isEmpty) {
+          return _loadingOrError();
+        }
+
+        return PageView.builder(
+          controller: pageController,
+          scrollDirection: Axis.vertical,
+          itemCount: controller.videos.length,
+          onPageChanged: (index) {
+            controller.playIndex(index);
+
+            if (index >= controller.videos.length - 3) {
+              controller.loadMore();
+            }
+          },
+          itemBuilder: (context, index) {
+            final item = controller.videos[index];
+
+            return _VideoPage(
+              key: ValueKey(item.bvid ?? item.aid),
+              controller: controller,
+              index: index,
+              title: item.title ?? '',
+              owner: item.owner?.name ?? '',
+            );
+          },
+        );
+      }),
+
+      Positioned(
+        top: 0,
+        left: 0,
+        child: SafeArea(
+          child: IconButton(
+            tooltip: '返回主页',
+            onPressed: Get.back,
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Colors.white,
+              size: 25,
+            ),
+          ),
+        ),
+      ),
+    ],
+  ),
+);
+
+}
+
+Widget _loadingOrError() {
+return Center(
+child: Obx(() {
+if (controller.error.value != null) {
+return Column(
+mainAxisSize: MainAxisSize.min,
+children: [
+const Icon(
+Icons.error_outline,
+color: Colors.white,
+size: 42,
+),
+const SizedBox(height: 12),
+Text(
+controller.error.value!,
+textAlign: TextAlign.center,
+style: const TextStyle(color: Colors.white),
+),
+const SizedBox(height: 12),
+FilledButton(
+onPressed: controller.loadMore,
+child: const Text('重试'),
+),
+],
+);
+}
+
+    return const CircularProgressIndicator();
+  }),
+);
+
+}
+}
+
+class _VideoPage extends StatefulWidget {
+const _VideoPage({
+super.key,
+required this.controller,
+required this.index,
+required this.title,
+required this.owner,
+});
+
+final VerticalFeedController controller;
+final int index;
+final String title;
+final String owner;
+
+@override
+State<_VideoPage> createState() => _VideoPageState();
+}
+
+class _VideoPageState extends State<_VideoPage> {
+double? _previousSpeed;
+bool _speedBoostActive = false;
+
+VerticalFeedController get controller => widget.controller;
+
+Future<void> _startFastPlayback() async {
+if (_speedBoostActive || !controller.ready.value) return;
+
+if (!controller.player.playerStatus.isPlaying) return;
+
+_previousSpeed = controller.player.playbackSpeed;
+_speedBoostActive = true;
+
+await controller.player.setPlaybackSpeed(3.0);
+
+}
+
+Future<void> _stopFastPlayback() async {
+if (!_speedBoostActive) return;
+
+final restoreSpeed = _previousSpeed ?? 1.0;
+
+_speedBoostActive = false;
+_previousSpeed = null;
+
+await controller.player.setPlaybackSpeed(restoreSpeed);
+
+}
+
+@override
+void dispose() {
+if (_speedBoostActive) {
+_speedBoostActive = false;
+controller.player.setPlaybackSpeed(_previousSpeed ?? 1.0);
+_previousSpeed = null;
+}
+
+super.dispose();
+
+}
+
+@override
+Widget build(BuildContext context) {
+return GestureDetector(
+behavior: HitTestBehavior.opaque,
+
+  // 双击暂停或继续播放
+  onDoubleTap: controller.togglePlayPause,
+
+  // 长按启动 3 倍速
+  onLongPressStart: (_) {
+    _startFastPlayback();
+  },
+
+  // 松开手指恢复原倍速
+  onLongPressEnd: (_) {
+    _stopFastPlayback();
+  },
+
+  // 长按手势取消时也恢复原倍速
+  onLongPressCancel: () {
+    _stopFastPlayback();
+  },
+
+  child: Stack(
+    fit: StackFit.expand,
+    children: [
+      Obx(() {
+        if (controller.currentIndex.value != widget.index) {
+          return const SizedBox.shrink();
+        }
+
+        final videoController = controller.videoController;
+
+        if (!controller.ready.value || videoController == null) {
+          return const Center(
+            child: CircularProgressIndicator(),
           );
         }
 
-        return const CircularProgressIndicator();
+        final videoWidth = controller.player.width ?? 0;
+        final videoHeight = controller.player.height ?? 0;
+
+        final isLandscape = videoWidth > videoHeight;
+
+        return IgnorePointer(
+          child: Video(
+            controller: videoController,
+            controls: NoVideoControls,
+            fit: isLandscape
+                ? BoxFit.contain
+                : BoxFit.cover,
+          ),
+        );
       }),
-    );
-  }
-}
 
-class _VideoPage extends StatelessWidget {
-  const _VideoPage({
-    super.key,
-    required this.controller,
-    required this.index,
-    required this.title,
-    required this.owner,
-  });
-
-  final VerticalFeedController controller;
-  final int index;
-  final String title;
-  final String owner;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onDoubleTap: controller.togglePlayPause,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Obx(() {
-            if (controller.currentIndex.value != index) {
-              return const SizedBox.shrink();
-            }
-
-            final videoController = controller.videoController;
-
-            if (!controller.ready.value || videoController == null) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
-            }
-
-            // 从播放器控制器获取当前视频的实际宽高
-            final videoWidth = controller.player.width ?? 0;
-            final videoHeight = controller.player.height ?? 0;
-
-            // 判断视频是横屏还是竖屏
-            final isLandscape = videoWidth > videoHeight;
-
-            // 忽略视频画面本身的触摸事件，
-            // 避免播放器画面干扰外层滑动手势
-            return IgnorePointer(
-              child: Video(
-                controller: videoController,
-                controls: NoVideoControls,
-                fit: isLandscape
-                    ? BoxFit.contain
-                    : BoxFit.cover,
-              ),
-            );
-          }),
-
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.18),
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.65),
-                    ],
-                    stops: const [0, 0.55, 1],
-                  ),
-                ),
+      Positioned.fill(
+        child: IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.18),
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.65),
+                ],
+                stops: const [0, 0.55, 1],
               ),
             ),
           ),
-
-          Positioned(
-            left: 16,
-            right: 72,
-            bottom: 28,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (owner.isNotEmpty)
-                  Text(
-                    '@$owner',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-
-                const SizedBox(height: 8),
-
-                Text(
-                  title,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          Positioned(
-            right: 12,
-            bottom: 86,
-            child: Obx(
-              () => Material(
-                color: Colors.black.withValues(alpha: 0.38),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  tooltip: controller.muted.value ? '取消静音' : '静音',
-                  color: Colors.white,
-                  onPressed: controller.toggleMute,
-                  icon: Icon(
-                    controller.muted.value
-                        ? Icons.volume_off_rounded
-                        : Icons.volume_up_rounded,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
-    );
-  }
+
+      Positioned(
+        left: 16,
+        right: 24,
+        bottom: 28,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.owner.isNotEmpty)
+              Text(
+                '@${widget.owner}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+
+            const SizedBox(height: 8),
+
+            Text(
+              widget.title,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  ),
+);
+
+}
 }
