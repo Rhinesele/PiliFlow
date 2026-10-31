@@ -64,12 +64,20 @@ class HomeController extends GetxController
     });
   }
 
+  // 主页不再显示独立竖屏 Feed Tab
   void setTabConfig() {
-    final tabs = GStorage.setting.get(SettingBoxKey.tabBarSort) as List?;
-    if (tabs != null) {
-      this.tabs = tabs.map((i) => HomeTabType.values[i]).toList();
+    final savedTabs =
+        GStorage.setting.get(SettingBoxKey.tabBarSort) as List?;
+
+    if (savedTabs != null) {
+      this.tabs = savedTabs
+          .map((i) => HomeTabType.values[i])
+          .where((e) => e != HomeTabType.vertical)
+          .toList();
     } else {
-      this.tabs = HomeTabType.values;
+      this.tabs = HomeTabType.values
+          .where((e) => e != HomeTabType.vertical)
+          .toList();
     }
 
     tabController = TabController(
@@ -93,7 +101,6 @@ class HomeController extends GetxController
       );
       if (res.data['code'] == 0) {
         defaultSearch.value = res.data['data']?['name'] ?? '';
-        // defaultSearch.value = res.data['data']?['show_name'] ?? '';
       }
     } catch (_) {}
   }
