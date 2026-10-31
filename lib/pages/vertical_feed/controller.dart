@@ -5,22 +5,28 @@ import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/account_type.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/home/rcmd/result.dart';
+import 'package:PiliPlus/pages/common/common_controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
+import 'package:flutter/widgets.dart' show ScrollController;
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
-class VerticalFeedController extends GetxController {
+class VerticalFeedController extends GetxController
+    with ScrollOrRefreshMixin {
   final videos = <RcmdVideoItemAppModel>[].obs;
   final currentIndex = 0.obs;
   final ready = false.obs;
   final loading = false.obs;
   final muted = false.obs;
   final error = RxnString();
+
+  @override
+  final ScrollController scrollController = ScrollController();
 
   late final PlPlayerController player = PlPlayerController.getInstance();
   VideoController? get videoController => player.videoController;
@@ -38,11 +44,9 @@ class VerticalFeedController extends GetxController {
   }
 
   void _onPlayerStatus(PlayerStatus status) {
-    if (status == .completed && !_disposed) {
+    if (status == PlayerStatus.completed && !_disposed) {
       final next = currentIndex.value + 1;
       if (next < videos.length) {
-        // view 的 PageView 会在这里被切换；如果当前页已经是最后一条，
-        // loadMore() 会补充数据后再切换。
         onCompleted?.call(next);
       } else {
         loadMore().then((_) {
@@ -55,6 +59,16 @@ class VerticalFeedController extends GetxController {
   }
 
   void Function(int)? onCompleted;
+
+  @override
+  Future<void> onRefresh() async {
+    videos.clear();
+    currentIndex.value = 0;
+    _freshIdx = 0;
+    ready.value = false;
+    error.value = null;
+    await loadMore();
+  }
 
   Future<void> loadMore() async {
     if (loading.value || _disposed) return;
@@ -69,8 +83,6 @@ class VerticalFeedController extends GetxController {
           videos.addAll(response);
           _freshIdx += response.length;
           if (wasEmpty) {
-            // PageView 初次建立时不会触发 onPageChanged，
-            // 因此第一条视频需要在首批推荐加载完成后主动播放。
             unawaited(playIndex(0));
           }
         }
@@ -178,6 +190,7 @@ class VerticalFeedController extends GetxController {
   @override
   void onClose() {
     disposePlayer();
+    scrollController.dispose();
     super.onClose();
   }
 }
