@@ -41,7 +41,9 @@ class _HomePageState extends CommonPageState<HomePage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
     Widget tabBar;
+
     if (_homeController.tabs.length > 1) {
       tabBar = Padding(
         padding: const EdgeInsets.only(top: 4),
@@ -50,7 +52,9 @@ class _HomePageState extends CommonPageState<HomePage>
           width: double.infinity,
           child: TabBar(
             controller: _homeController.tabController,
-            tabs: _homeController.tabs.map((e) => Tab(text: e.label)).toList(),
+            tabs: _homeController.tabs
+                .map((e) => Tab(text: e.label))
+                .toList(),
             isScrollable: true,
             dividerColor: Colors.transparent,
             dividerHeight: 0,
@@ -65,6 +69,7 @@ class _HomePageState extends CommonPageState<HomePage>
           ),
         ),
       );
+
       if (_homeController.hideTopBar &&
           _mainController.barHideType == .instant) {
         tabBar = Material(
@@ -75,17 +80,22 @@ class _HomePageState extends CommonPageState<HomePage>
     } else {
       tabBar = const SizedBox(height: 6);
     }
+
     return Column(
       children: [
         if (!_mainController.useSideBar &&
             MediaQuery.sizeOf(context).isPortrait)
           customAppBar(),
+
         tabBar,
+
         Expanded(
           child: onBuild(
             tabBarView(
               controller: _homeController.tabController,
-              children: _homeController.tabs.map((e) => e.page).toList(),
+              children: _homeController.tabs
+                  .map((e) => e.page)
+                  .toList(),
             ),
           ),
         ),
@@ -95,34 +105,56 @@ class _HomePageState extends CommonPageState<HomePage>
 
   Widget customAppBar() {
     const padding = EdgeInsets.fromLTRB(14, 6, 14, 0);
+
     final child = Row(
       children: [
         searchBar(),
+
         const SizedBox(width: 4),
+
+        // 独立竖屏视频入口
+        IconButton(
+          tooltip: '竖屏刷视频',
+          onPressed: () {
+            Get.toNamed('/verticalFeed');
+          },
+          icon: const Icon(
+            Icons.video_collection_outlined,
+            size: 25,
+          ),
+        ),
+
         msgBadge(_mainController),
+
         const SizedBox(width: 8),
-        userAvatar(colorScheme: _colorScheme, mainController: _mainController),
+
+        userAvatar(
+          colorScheme: _colorScheme,
+          mainController: _mainController,
+        ),
       ],
     );
+
     if (_homeController.hideTopBar) {
       if (_mainController.barOffset case final barOffset?) {
-        return Obx(
-          () {
-            final offset = barOffset.value;
-            return CustomHeightWidget(
-              offset: Offset(0, -offset),
-              height: Style.topBarHeight - offset,
-              child: Padding(
-                padding: padding,
-                child: child,
-              ),
-            );
-          },
-        );
+        return Obx(() {
+          final offset = barOffset.value;
+
+          return CustomHeightWidget(
+            offset: Offset(0, -offset),
+            height: Style.topBarHeight - offset,
+            child: Padding(
+              padding: padding,
+              child: child,
+            ),
+          );
+        });
       }
+
       if (_homeController.showTopBar case final showTopBar?) {
         return Obx(() {
           final showSearchBar = showTopBar.value;
+
           return AnimatedOpacity(
             opacity: showSearchBar ? 1 : 0,
             duration: const Duration(milliseconds: 300),
@@ -137,6 +169,7 @@ class _HomePageState extends CommonPageState<HomePage>
         });
       }
     }
+
     return Container(
       height: Style.topBarHeight,
       padding: padding,
@@ -146,6 +179,7 @@ class _HomePageState extends CommonPageState<HomePage>
 
   Widget searchBar() {
     const borderRadius = BorderRadius.all(Radius.circular(25));
+
     return Expanded(
       child: SizedBox(
         height: 44,
@@ -166,22 +200,28 @@ class _HomePageState extends CommonPageState<HomePage>
             child: Row(
               children: [
                 const SizedBox(width: 14),
+
                 Icon(
                   Icons.search_outlined,
                   color: _colorScheme.onSecondaryContainer,
                   semanticLabel: '搜索',
                 ),
+
                 const SizedBox(width: 10),
+
                 Expanded(
                   child: Obx(
                     () => Text(
                       _homeController.defaultSearch.value,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: _colorScheme.outline),
+                      style: TextStyle(
+                        color: _colorScheme.outline,
+                      ),
                     ),
                   ),
                 ),
+
                 const SizedBox(width: 5),
               ],
             ),
@@ -198,103 +238,108 @@ Widget userAvatar({
 }) {
   return Semantics(
     label: "我的",
-    child: Obx(
-      () {
-        if (mainController.accountService.isLogin.value) {
-          return Stack(
-            clipBehavior: .none,
-            children: [
-              NetworkImgLayer(
-                type: .avatar,
-                width: 34,
-                height: 34,
-                src: mainController.accountService.face.value,
-              ),
-              Positioned.fill(
-                child: Material(
-                  type: .transparency,
-                  child: InkWell(
-                    onTap: mainController.toMinePage,
-                    splashColor: colorScheme.primaryContainer.withValues(
-                      alpha: 0.3,
-                    ),
-                    customBorder: const CircleBorder(),
+    child: Obx(() {
+      if (mainController.accountService.isLogin.value) {
+        return Stack(
+          clipBehavior: .none,
+          children: [
+            NetworkImgLayer(
+              type: .avatar,
+              width: 34,
+              height: 34,
+              src: mainController.accountService.face.value,
+            ),
+
+            Positioned.fill(
+              child: Material(
+                type: .transparency,
+                child: InkWell(
+                  onTap: mainController.toMinePage,
+                  splashColor: colorScheme.primaryContainer.withValues(
+                    alpha: 0.3,
                   ),
+                  customBorder: const CircleBorder(),
                 ),
               ),
-              Positioned(
-                right: -4,
-                bottom: -4,
-                child: Obx(
-                  () => MineController.anonymity.value
-                      ? IgnorePointer(
-                          child: Container(
-                            padding: const .all(2),
-                            decoration: BoxDecoration(
-                              shape: .circle,
-                              color: colorScheme.secondaryContainer,
-                            ),
-                            child: Icon(
-                              size: 14,
-                              MdiIcons.incognito,
-                              color: colorScheme.onSecondaryContainer,
-                            ),
+            ),
+
+            Positioned(
+              right: -4,
+              bottom: -4,
+              child: Obx(
+                () => MineController.anonymity.value
+                    ? IgnorePointer(
+                        child: Container(
+                          padding: const .all(2),
+                          decoration: BoxDecoration(
+                            shape: .circle,
+                            color: colorScheme.secondaryContainer,
                           ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
+                          child: Icon(
+                            size: 14,
+                            MdiIcons.incognito,
+                            color: colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
-            ],
-          );
-        }
-        return SizedBox(
-          width: 38,
-          height: 38,
-          child: IconButton(
-            tooltip: '点击登录',
-            style: IconButton.styleFrom(
-              padding: .zero,
-              backgroundColor: colorScheme.onInverseSurface,
             ),
-            onPressed: mainController.toMinePage,
-            icon: Icon(
-              Icons.person_rounded,
-              size: 22,
-              color: colorScheme.primary,
-            ),
-          ),
+          ],
         );
-      },
-    ),
+      }
+
+      return SizedBox(
+        width: 38,
+        height: 38,
+        child: IconButton(
+          tooltip: '点击登录',
+          style: IconButton.styleFrom(
+            padding: .zero,
+            backgroundColor: colorScheme.onInverseSurface,
+          ),
+          onPressed: mainController.toMinePage,
+          icon: Icon(
+            Icons.person_rounded,
+            size: 22,
+            color: colorScheme.primary,
+          ),
+        ),
+      );
+    }),
   );
 }
 
 Widget msgBadge(MainController mainController) {
-  return Obx(
-    () {
-      if (mainController.accountService.isLogin.value) {
-        final count = mainController.msgUnReadCount.value;
-        final isNumBadge = mainController.msgBadgeMode == .number;
-        return IconButton(
-          tooltip: '消息',
-          onPressed: () {
-            mainController
-              ..clearUnreadMsg()
-              ..lastCheckUnreadAt = DateTime.now().millisecondsSinceEpoch;
-            Get.toNamed('/whisper');
-          },
-          icon: Badge(
-            isLabelVisible:
-                mainController.msgBadgeMode != .hidden && count != null,
-            alignment: isNumBadge
-                ? const Alignment(0.0, -0.85)
-                : const Alignment(1.0, -0.85),
-            label: isNumBadge && count != null ? Text(count) : null,
-            child: const Icon(Icons.notifications_none),
-          ),
-        );
-      }
-      return const SizedBox.shrink();
-    },
-  );
+  return Obx(() {
+    if (mainController.accountService.isLogin.value) {
+      final count = mainController.msgUnReadCount.value;
+      final isNumBadge = mainController.msgBadgeMode == .number;
+
+      return IconButton(
+        tooltip: '消息',
+        onPressed: () {
+          mainController
+            ..clearUnreadMsg()
+            ..lastCheckUnreadAt =
+                DateTime.now().millisecondsSinceEpoch;
+
+          Get.toNamed('/whisper');
+        },
+        icon: Badge(
+          isLabelVisible:
+              mainController.msgBadgeMode != .hidden && count != null,
+          alignment: isNumBadge
+              ? const Alignment(0.0, -0.85)
+              : const Alignment(1.0, -0.85),
+          label: isNumBadge && count != null
+              ? Text(count)
+              : null,
+          child: const Icon(Icons.notifications_none),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  });
 }
