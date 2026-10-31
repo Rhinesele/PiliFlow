@@ -10,11 +10,15 @@ class VerticalFeedPage extends StatefulWidget {
   State<VerticalFeedPage> createState() => _VerticalFeedPageState();
 }
 
-class _VerticalFeedPageState extends State<VerticalFeedPage> {
+class _VerticalFeedPageState extends State<VerticalFeedPage>
+    with AutomaticKeepAliveClientMixin {
   late final VerticalFeedController controller = Get.put(
     VerticalFeedController(),
   );
   final pageController = PageController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -34,53 +38,39 @@ class _VerticalFeedPageState extends State<VerticalFeedPage> {
   void dispose() {
     controller.onCompleted = null;
     pageController.dispose();
-    Get.delete<VerticalFeedController>();
+    // 不要在这里 delete controller，因为作为 Tab 需要保持状态
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       backgroundColor: Colors.black,
       body: Obx(() {
         if (controller.videos.isEmpty) {
           return _loadingOrError();
         }
-        return Stack(
-          children: [
-            PageView.builder(
-              controller: pageController,
-              scrollDirection: Axis.vertical,
-              itemCount: controller.videos.length,
-              onPageChanged: (index) {
-                controller.playIndex(index);
-                if (index >= controller.videos.length - 3) {
-                  controller.loadMore();
-                }
-              },
-              itemBuilder: (context, index) {
-                final item = controller.videos[index];
-                return _VideoPage(
-                  key: ValueKey(item.bvid ?? item.aid),
-                  controller: controller,
-                  index: index,
-                  title: item.title ?? '',
-                  owner: item.owner?.name ?? '',
-                );
-              },
-            ),
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: IconButton(
-                  tooltip: '返回',
-                  color: Colors.white,
-                  onPressed: Get.back,
-                  icon: const Icon(Icons.arrow_back),
-                ),
-              ),
-            ),
-          ],
+        return PageView.builder(
+          controller: pageController,
+          scrollDirection: Axis.vertical,
+          itemCount: controller.videos.length,
+          onPageChanged: (index) {
+            controller.playIndex(index);
+            if (index >= controller.videos.length - 3) {
+              controller.loadMore();
+            }
+          },
+          itemBuilder: (context, index) {
+            final item = controller.videos[index];
+            return _VideoPage(
+              key: ValueKey(item.bvid ?? item.aid),
+              controller: controller,
+              index: index,
+              title: item.title ?? '',
+              owner: item.owner?.name ?? '',
+            );
+          },
         );
       }),
     );
@@ -137,8 +127,6 @@ class _VideoPage extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           Obx(() {
-            // PlPlayerController 是单实例：切页时它会切换到新视频。
-            // 只让当前 Page 显示播放器，避免切页动画期间两页同时显示同一视频。
             if (controller.currentIndex.value != index) {
               return const SizedBox.shrink();
             }
