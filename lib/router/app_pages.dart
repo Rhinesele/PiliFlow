@@ -3,7 +3,7 @@ import 'package:PiliPlus/pages/article_list/view.dart';
 import 'package:PiliPlus/pages/audio/view.dart';
 import 'package:PiliPlus/pages/blacklist/view.dart';
 import 'package:PiliPlus/pages/bubble/view.dart';
-import 'package:PiliPlus/pages/dan​​maku_block/view.dart';
+import 'package:PiliPlus/pages/danmaku_block/view.dart';;
 import 'package:PiliPlus/pages/dlna/view.dart';
 import 'package:PiliPlus/pages/download/download/view.dart';
 import 'package:PiliPlus/pages/dynamics/view.dart';
