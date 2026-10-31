@@ -177,10 +177,23 @@ class _VideoPage extends StatelessWidget {
               );
             }
 
-            return Video(
-              controller: videoController,
-              controls: NoVideoControls,
-              fit: BoxFit.cover,
+            // 从播放器控制器获取当前视频的实际宽高
+            final videoWidth = controller.player.width ?? 0;
+            final videoHeight = controller.player.height ?? 0;
+
+            // 判断视频是横屏还是竖屏
+            final isLandscape = videoWidth > videoHeight;
+
+            // 忽略视频画面本身的触摸事件，
+            // 避免播放器画面干扰外层滑动手势
+            return IgnorePointer(
+              child: Video(
+                controller: videoController,
+                controls: NoVideoControls,
+                fit: isLandscape
+                    ? BoxFit.contain
+                    : BoxFit.cover,
+              ),
             );
           }),
 
