@@ -15,6 +15,7 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
   late final VerticalFeedController controller = Get.put(
     VerticalFeedController(),
   );
+
   final pageController = PageController();
 
   @override
@@ -23,6 +24,7 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
   @override
   void initState() {
     super.initState();
+
     controller.onCompleted = (index) {
       if (pageController.hasClients) {
         pageController.animateToPage(
@@ -38,41 +40,72 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
   void dispose() {
     controller.onCompleted = null;
     pageController.dispose();
-    // 不要在这里 delete controller，因为作为 Tab 需要保持状态
+
+    if (Get.isRegistered<VerticalFeedController>()) {
+      Get.delete<VerticalFeedController>();
+    }
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Obx(() {
-        if (controller.videos.isEmpty) {
-          return _loadingOrError();
-        }
-        return PageView.builder(
-          controller: pageController,
-          scrollDirection: Axis.vertical,
-          itemCount: controller.videos.length,
-          onPageChanged: (index) {
-            controller.playIndex(index);
-            if (index >= controller.videos.length - 3) {
-              controller.loadMore();
+      body: Stack(
+        children: [
+          Obx(() {
+            if (controller.videos.isEmpty) {
+              return _loadingOrError();
             }
-          },
-          itemBuilder: (context, index) {
-            final item = controller.videos[index];
-            return _VideoPage(
-              key: ValueKey(item.bvid ?? item.aid),
-              controller: controller,
-              index: index,
-              title: item.title ?? '',
-              owner: item.owner?.name ?? '',
+
+            return PageView.builder(
+              controller: pageController,
+              scrollDirection: Axis.vertical,
+              itemCount: controller.videos.length,
+              onPageChanged: (index) {
+                controller.playIndex(index);
+
+                if (index >= controller.videos.length - 3) {
+                  controller.loadMore();
+                }
+              },
+              itemBuilder: (context, index) {
+                final item = controller.videos[index];
+
+                return _VideoPage(
+                  key: ValueKey(item.bvid ?? item.aid),
+                  controller: controller,
+                  index: index,
+                  title: item.title ?? '',
+                  owner: item.owner?.name ?? '',
+                );
+              },
             );
-          },
-        );
-      }),
+          }),
+
+          // 左上角返回主页
+          Positioned(
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              child: IconButton(
+                tooltip: '返回主页',
+                onPressed: () {
+                  Get.back();
+                },
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white,
+                  size: 25,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -83,7 +116,11 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: Colors.white, size: 42),
+              const Icon(
+                Icons.error_outline,
+                color: Colors.white,
+                size: 42,
+              ),
               const SizedBox(height: 12),
               Text(
                 controller.error.value!,
@@ -98,6 +135,7 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
             ],
           );
         }
+
         return const CircularProgressIndicator();
       }),
     );
@@ -130,16 +168,22 @@ class _VideoPage extends StatelessWidget {
             if (controller.currentIndex.value != index) {
               return const SizedBox.shrink();
             }
+
             final videoController = controller.videoController;
+
             if (!controller.ready.value || videoController == null) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
             }
+
             return Video(
               controller: videoController,
               controls: NoVideoControls,
               fit: BoxFit.cover,
             );
           }),
+
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -158,6 +202,7 @@ class _VideoPage extends StatelessWidget {
               ),
             ),
           ),
+
           Positioned(
             left: 16,
             right: 72,
@@ -176,16 +221,22 @@ class _VideoPage extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+
                 const SizedBox(height: 8),
+
                 Text(
                   title,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                  ),
                 ),
               ],
             ),
           ),
+
           Positioned(
             right: 12,
             bottom: 86,
