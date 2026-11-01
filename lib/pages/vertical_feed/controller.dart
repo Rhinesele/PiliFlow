@@ -16,6 +16,12 @@ import 'package:flutter/widgets.dart' show ScrollController;
 import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+enum VerticalFeedPlayMode {
+autoNext,
+loopCurrent,
+stop,
+}
+
 class VerticalFeedController extends GetxController
 with ScrollOrRefreshMixin {
 final videos = <RcmdVideoItemAppModel>[].obs;
@@ -25,25 +31,24 @@ final loading = false.obs;
 final muted = false.obs;
 final error = RxnString();
 
-// 当前视频的点赞状态
 final liked = false.obs;
-
-// 正在执行点赞操作
 final liking = false.obs;
+final playMode = VerticalFeedPlayMode.autoNext.obs;
 
-// 保存已经读取过的点赞状态
 final Map<String, bool> _likeCache = {};
 
 @override
 final ScrollController scrollController = ScrollController();
 
-late final PlPlayerController player = PlPlayerController.getInstance();
+late final PlPlayerController player =
+PlPlayerController.getInstance();
 
 VideoController? get videoController => player.videoController;
 
 int _freshIdx = 0;
 int _loadToken = 0;
 bool _disposed = false;
+bool _handlingCompletion = false;
 
 @override
 void onInit() {
@@ -53,19 +58,69 @@ player.addStatusLister(_onPlayerStatus);
 loadMore();
 }
 
-void _onPlayerStatus(PlayerStatus status) {
-if (status == PlayerStatus.completed && !_disposed) {
+String get playModeName {
+switch (playMode.value) {
+case VerticalFeedPlayMode.autoNext:
+return '自动连播';
+case VerticalFeedPlayMode.loopCurrent:
+return '循环当前';
+case VerticalFeedPlayMode.stop:
+return '播完停止';
+}
+}
+
+void setPlayMode(VerticalFeedPlayMode mode) {
+playMode.value = mode;
+}
+
+Future<void> _onPlayerStatus(PlayerStatus status) async {
+if (status != PlayerStatus.completed ||
+_disposed ||
+_handlingCompletion) {
+return;
+}
+
+_handlingCompletion = true;
+
+try {
+  switch (playMode.value) {
+    case VerticalFeedPlayMode.autoNext:
+      await _playNextVideo();
+      break;
+
+    case VerticalFeedPlayMode.loopCurrent:
+      await player.seekTo(Duration.zero);
+      if (!_disposed) {
+        await player.play();
+      }
+      break;
+
+    case VerticalFeedPlayMode.stop:
+      await player.pause();
+      break;
+  }
+} finally {
+  _handlingCompletion = false;
+}
+
+}
+
+Future<void> _playNextVideo() async {
+if (_disposed) return;
+
 final next = currentIndex.value + 1;
 
-  if (next < videos.length) {
-    onCompleted?.call(next);
-  } else {
-    loadMore().then((_) {
-      if (!_disposed && currentIndex.value + 1 < videos.length) {
-        onCompleted?.call(currentIndex.value + 1);
-      }
-    });
-  }
+if (next < videos.length) {
+  onCompleted?.call(next);
+  return;
+}
+
+await loadMore();
+
+if (_disposed) return;
+
+if (currentIndex.value + 1 < videos.length) {
+  onCompleted?.call(currentIndex.value + 1);
 }
 
 }
@@ -123,7 +178,9 @@ try {
 }
 
 Future<void> playIndex(int index) async {
-if (_disposed || index < 0 || index >= videos.length) return;
+if (_disposed || index < 0 || index >= videos.length) {
+return;
+}
 
 currentIndex.value = index;
 ready.value = false;
@@ -139,10 +196,7 @@ if (bvid == null || cid == null) {
   return;
 }
 
-// 优先使用缓存的点赞状态
 liked.value = _likeCache[bvid] ?? false;
-
-// 获取服务器上的真实点赞状态
 unawaited(_loadLikeStatus(bvid, token));
 
 try {
@@ -238,7 +292,6 @@ try {
 
 }
 
-// 从 B 站服务器读取真实点赞状态
 Future<void> _loadLikeStatus(
 String bvid,
 int token,
@@ -257,17 +310,15 @@ bvid: bvid,
 
   if (res case Success(:final response)) {
     final value = response.like ?? false;
-
     _likeCache[bvid] = value;
     liked.value = value;
   }
 } catch (_) {
-  // 网络读取失败时保留原状态，不影响视频播放
+  // 网络读取失败时保留原状态。
 }
 
 }
 
-// 点赞 / 取消点赞
 Future<bool> toggleLike() async {
 if (liking.value) return false;
 
@@ -300,10 +351,8 @@ try {
 
   if (res case Success()) {
     final newValue = !oldValue;
-
     liked.value = newValue;
     _likeCache[bvid] = newValue;
-
     return true;
   }
 
