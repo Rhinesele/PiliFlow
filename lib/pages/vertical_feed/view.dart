@@ -1,4 +1,5 @@
 import 'package:PiliPlus/pages/vertical_feed/controller.dart';
+import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -192,14 +193,59 @@ class _VideoPageState extends State<_VideoPage> {
     return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(milliseconds: 1400),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  Future<void> _toggleLike() async {
+    if (controller.liking.value) return;
+
+    final success = await controller.toggleLike();
+
+    if (!mounted) return;
+
+    if (success) {
+      _showMessage(
+        controller.liked.value ? '点赞成功' : '已取消点赞',
+      );
+    } else {
+      _showMessage('点赞失败，请检查登录状态或网络连接');
+    }
+  }
+
+  Future<void> _shareVideo() async {
+    if (widget.index < 0 ||
+        widget.index >= controller.videos.length) {
+      _showMessage('无法获取视频信息');
+      return;
+    }
+
+    final item = controller.videos[widget.index];
+    final bvid = item.bvid;
+
+    if (bvid == null || bvid.isEmpty) {
+      _showMessage('无法获取视频链接');
+      return;
+    }
+
+    final title = item.title ?? '哔哩哔哩视频';
+    final url = 'https://www.bilibili.com/video/$bvid';
+
+    await ShareUtils.shareText('$title\n$url');
+  }
+
   void _showActionHint(String name) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$name功能正在接入'),
-        duration: const Duration(milliseconds: 900),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    _showMessage('$name功能尚未接入');
   }
 
   @override
@@ -220,7 +266,6 @@ class _VideoPageState extends State<_VideoPage> {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
 
-        // 根据屏幕尺寸自动切换紧凑布局
         final isLandscape = width > height;
         final isCompact = height < 680 || isLandscape;
 
@@ -237,21 +282,16 @@ class _VideoPageState extends State<_VideoPage> {
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-
           onDoubleTap: controller.togglePlayPause,
-
           onLongPressStart: (_) {
             _startFastPlayback();
           },
-
           onLongPressEnd: (_) {
             _stopFastPlayback();
           },
-
           onLongPressCancel: () {
             _stopFastPlayback();
           },
-
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -322,9 +362,7 @@ class _VideoPageState extends State<_VideoPage> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-
                     const SizedBox(height: 8),
-
                     Text(
                       widget.title,
                       maxLines: isCompact ? 2 : 3,
@@ -345,17 +383,28 @@ class _VideoPageState extends State<_VideoPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _FeedActionButton(
-                      icon: Icons.thumb_up_alt_outlined,
-                      label: '点赞',
-                      iconSize: iconSize,
-                      labelSize: labelSize,
-                      compact: isCompact,
-                      onTap: () => _showActionHint('点赞'),
-                    ),
+                    // 点赞：连接真实 API
+                    Obx(() {
+                      final isLiked = controller.liked.value;
+                      final isLiking = controller.liking.value;
+
+                      return _FeedActionButton(
+                        icon: isLiked
+                            ? Icons.thumb_up_alt
+                            : Icons.thumb_up_alt_outlined,
+                        label: '点赞',
+                        iconSize: iconSize,
+                        labelSize: labelSize,
+                        compact: isCompact,
+                        active: isLiked,
+                        loading: isLiking,
+                        onTap: _toggleLike,
+                      );
+                    }),
 
                     SizedBox(height: actionSpacing),
 
+                    // 评论：待接入
                     _FeedActionButton(
                       icon: Icons.mode_comment_outlined,
                       label: '评论',
@@ -367,6 +416,7 @@ class _VideoPageState extends State<_VideoPage> {
 
                     SizedBox(height: actionSpacing),
 
+                    // 投币：待接入
                     _FeedActionButton(
                       icon: Icons.monetization_on_outlined,
                       label: '投币',
@@ -378,6 +428,7 @@ class _VideoPageState extends State<_VideoPage> {
 
                     SizedBox(height: actionSpacing),
 
+                    // 收藏：待接入
                     _FeedActionButton(
                       icon: Icons.star_border_rounded,
                       label: '收藏',
@@ -389,13 +440,14 @@ class _VideoPageState extends State<_VideoPage> {
 
                     SizedBox(height: actionSpacing),
 
+                    // 分享：调用系统分享面板
                     _FeedActionButton(
                       icon: Icons.share_outlined,
                       label: '分享',
                       iconSize: iconSize,
                       labelSize: labelSize,
                       compact: isCompact,
-                      onTap: () => _showActionHint('分享'),
+                      onTap: _shareVideo,
                     ),
                   ],
                 ),
@@ -428,9 +480,7 @@ class _VideoPageState extends State<_VideoPage> {
                           fontSize: 11,
                         ),
                       ),
-
                       const SizedBox(width: 8),
-
                       Expanded(
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
@@ -466,9 +516,7 @@ class _VideoPageState extends State<_VideoPage> {
                           ),
                         ),
                       ),
-
                       const SizedBox(width: 8),
-
                       Text(
                         _formatDuration(duration),
                         style: const TextStyle(
@@ -488,7 +536,6 @@ class _VideoPageState extends State<_VideoPage> {
   }
 }
 
-// 竖屏视频流互动按钮
 class _FeedActionButton extends StatelessWidget {
   const _FeedActionButton({
     required this.icon,
@@ -497,6 +544,8 @@ class _FeedActionButton extends StatelessWidget {
     required this.labelSize,
     required this.compact,
     required this.onTap,
+    this.active = false,
+    this.loading = false,
   });
 
   final IconData icon;
@@ -504,30 +553,40 @@ class _FeedActionButton extends StatelessWidget {
   final double iconSize;
   final double labelSize;
   final bool compact;
+  final bool active;
+  final bool loading;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkResponse(
-      onTap: onTap,
+      onTap: loading ? null : onTap,
       radius: 28,
       child: SizedBox(
         width: compact ? 44 : 52,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: Colors.white,
-              size: iconSize,
-            ),
-
+            if (loading)
+              SizedBox(
+                width: iconSize,
+                height: iconSize,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            else
+              Icon(
+                icon,
+                color: active ? Colors.pinkAccent : Colors.white,
+                size: iconSize,
+              ),
             SizedBox(height: compact ? 2 : 4),
-
             Text(
               label,
               style: TextStyle(
-                color: Colors.white,
+                color: active ? Colors.pinkAccent : Colors.white,
                 fontSize: labelSize,
                 shadows: const [
                   Shadow(
