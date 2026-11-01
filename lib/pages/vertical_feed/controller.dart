@@ -38,6 +38,7 @@ final Map<String, bool> _likeCache = {};
 final ScrollController scrollController = ScrollController();
 
 late final PlPlayerController player = PlPlayerController.getInstance();
+
 VideoController? get videoController => player.videoController;
 
 int _freshIdx = 0;
@@ -53,18 +54,20 @@ loadMore();
 }
 
 void _onPlayerStatus(PlayerStatus status) {
-if (status == PlayerStatus.completed && !disposed) {
+if (status == PlayerStatus.completed && !_disposed) {
 final next = currentIndex.value + 1;
-if (next < videos.length) {
-onCompleted?.call(next);
-} else {
-loadMore().then(() {
-if (!_disposed && currentIndex.value + 1 < videos.length) {
-onCompleted?.call(currentIndex.value + 1);
+
+  if (next < videos.length) {
+    onCompleted?.call(next);
+  } else {
+    loadMore().then((_) {
+      if (!_disposed && currentIndex.value + 1 < videos.length) {
+        onCompleted?.call(currentIndex.value + 1);
+      }
+    });
+  }
 }
-});
-}
-}
+
 }
 
 void Function(int)? onCompleted;
@@ -82,28 +85,41 @@ await loadMore();
 
 Future<void> loadMore() async {
 if (loading.value || _disposed) return;
+
 loading.value = true;
 error.value = null;
+
 try {
-final res = await VideoHttp.rcmdVideoListApp(freshIdx: _freshIdx);
-if (_disposed) return;
-if (res case Success(:final response)) {
-if (response.isNotEmpty) {
-final wasEmpty = videos.isEmpty;
-videos.addAll(response);
-_freshIdx += response.length;
-if (wasEmpty) {
-unawaited(playIndex(0));
-}
-}
-} else if (res case Error(:final errMsg)) {
-error.value = errMsg;
-}
+  final res = await VideoHttp.rcmdVideoListApp(
+    freshIdx: _freshIdx,
+  );
+
+  if (_disposed) return;
+
+  if (res case Success(:final response)) {
+    if (response.isNotEmpty) {
+      final wasEmpty = videos.isEmpty;
+
+      videos.addAll(response);
+      _freshIdx += response.length;
+
+      if (wasEmpty) {
+        unawaited(playIndex(0));
+      }
+    }
+  } else if (res case Error(:final errMsg)) {
+    error.value = errMsg;
+  }
 } catch (e) {
-if (!_disposed) error.value = e.toString();
+  if (!_disposed) {
+    error.value = e.toString();
+  }
 } finally {
-if (!_disposed) loading.value = false;
+  if (!_disposed) {
+    loading.value = false;
+  }
 }
+
 }
 
 Future<void> playIndex(int index) async {
@@ -130,14 +146,18 @@ liked.value = _likeCache[bvid] ?? false;
 unawaited(_loadLikeStatus(bvid, token));
 
 try {
-  await player.pause(notify: false, isInterrupt: true);
+  await player.pause(
+    notify: false,
+    isInterrupt: true,
+  );
 
   final res = await VideoHttp.videoUrl(
     avid: item.aid,
     bvid: bvid,
     cid: cid,
     qn: Pref.defaultVideoQa,
-    tryLook: !Accounts.get(AccountType.video).isLogin && Pref.p1080,
+    tryLook: !Accounts.get(AccountType.video).isLogin &&
+        Pref.p1080,
     videoType: VideoType.ugc,
   );
 
@@ -145,9 +165,11 @@ try {
 
   if (res case Success(:final response)) {
     final dash = response.dash;
+
     final video = dash?.video?.isNotEmpty == true
         ? dash!.video!.first
         : null;
+
     final audio = dash?.audio?.isNotEmpty == true
         ? dash!.audio!.first
         : null;
@@ -157,10 +179,16 @@ try {
       return;
     }
 
-    final videoUrl = VideoUtils.getCdnUrl(video.playUrls);
+    final videoUrl = VideoUtils.getCdnUrl(
+      video.playUrls,
+    );
+
     final audioUrl = audio == null
         ? null
-        : VideoUtils.getCdnUrl(audio.playUrls, isAudio: true);
+        : VideoUtils.getCdnUrl(
+            audio.playUrls,
+            isAudio: true,
+          );
 
     if (videoUrl == null || videoUrl.isEmpty) {
       error.value = '视频地址获取失败';
@@ -168,10 +196,15 @@ try {
     }
 
     await player.setDataSource(
-      NetworkSource(videoSource: videoUrl, audioSource: audioUrl),
+      NetworkSource(
+        videoSource: videoUrl,
+        audioSource: audioUrl,
+      ),
       duration: response.timeLength == null
           ? null
-          : Duration(milliseconds: response.timeLength!),
+          : Duration(
+              milliseconds: response.timeLength!,
+            ),
       isVertical: true,
       aid: item.aid,
       bvid: bvid,
@@ -187,7 +220,10 @@ try {
     ready.value = true;
 
     if (muted.value) {
-      await player.setVolume(0, showIndicator: false);
+      await player.setVolume(
+        0,
+        showIndicator: false,
+      );
     }
 
     await player.play();
@@ -203,9 +239,14 @@ try {
 }
 
 // 从 B 站服务器读取真实点赞状态
-Future<void> _loadLikeStatus(String bvid, int token) async {
+Future<void> _loadLikeStatus(
+String bvid,
+int token,
+) async {
 try {
-final res = await VideoHttp.videoRelation(bvid: bvid);
+final res = await VideoHttp.videoRelation(
+bvid: bvid,
+);
 
   if (_disposed ||
       token != _loadToken ||
@@ -216,6 +257,7 @@ final res = await VideoHttp.videoRelation(bvid: bvid);
 
   if (res case Success(:final response)) {
     final value = response.like ?? false;
+
     _likeCache[bvid] = value;
     liked.value = value;
   }
@@ -239,12 +281,16 @@ if (currentIndex.value < 0 ||
 }
 
 final bvid = videos[currentIndex.value].bvid;
-if (bvid == null || bvid.isEmpty) return false;
+
+if (bvid == null || bvid.isEmpty) {
+  return false;
+}
 
 liking.value = true;
 
 try {
   final oldValue = liked.value;
+
   final res = await VideoHttp.likeVideo(
     bvid: bvid,
     type: oldValue,
@@ -254,8 +300,10 @@ try {
 
   if (res case Success()) {
     final newValue = !oldValue;
+
     liked.value = newValue;
     _likeCache[bvid] = newValue;
+
     return true;
   }
 
@@ -263,14 +311,21 @@ try {
 } catch (_) {
   return false;
 } finally {
-  if (!_disposed) liking.value = false;
+  if (!_disposed) {
+    liking.value = false;
+  }
 }
 
 }
 
 Future<void> toggleMute() async {
 muted.toggle();
-await player.setVolume(muted.value ? 0 : 1, showIndicator: false);
+
+await player.setVolume(
+  muted.value ? 0 : 1,
+  showIndicator: false,
+);
+
 }
 
 Future<void> togglePlayPause() async {
@@ -288,6 +343,7 @@ void disposePlayer() {
 if (_disposed) return;
 
 _disposed = true;
+
 player.removeStatusLister(_onPlayerStatus);
 player.dispose();
 
