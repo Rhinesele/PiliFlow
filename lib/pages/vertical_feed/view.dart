@@ -215,237 +215,275 @@ class _VideoPageState extends State<_VideoPage> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
 
-      onDoubleTap: controller.togglePlayPause,
+        // 根据屏幕尺寸自动切换紧凑布局
+        final isLandscape = width > height;
+        final isCompact = height < 680 || isLandscape;
 
-      onLongPressStart: (_) {
-        _startFastPlayback();
-      },
+        final actionSpacing = isLandscape ? 5.0 : (isCompact ? 9.0 : 16.0);
+        final actionBottom = isLandscape ? 66.0 : (isCompact ? 92.0 : 112.0);
+        final titleBottom = isCompact ? 66.0 : 76.0;
+        final iconSize = isLandscape ? 22.0 : (isCompact ? 25.0 : 29.0);
+        final labelSize = isCompact ? 10.0 : 11.0;
 
-      onLongPressEnd: (_) {
-        _stopFastPlayback();
-      },
+        final bottomInset = MediaQuery.paddingOf(context).bottom;
+        final progressBottom = bottomInset > 0
+            ? bottomInset + 8
+            : 24.0;
 
-      onLongPressCancel: () {
-        _stopFastPlayback();
-      },
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
 
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 视频画面
-          Obx(() {
-            if (controller.currentIndex.value != widget.index) {
-              return const SizedBox.shrink();
-            }
+          onDoubleTap: controller.togglePlayPause,
 
-            final videoController = controller.videoController;
+          onLongPressStart: (_) {
+            _startFastPlayback();
+          },
 
-            if (!controller.ready.value || videoController == null) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
-            }
+          onLongPressEnd: (_) {
+            _stopFastPlayback();
+          },
 
-            final videoWidth = controller.player.width ?? 0;
-            final videoHeight = controller.player.height ?? 0;
-            final isLandscape = videoWidth > videoHeight;
+          onLongPressCancel: () {
+            _stopFastPlayback();
+          },
 
-            return IgnorePointer(
-              child: Video(
-                controller: videoController,
-                controls: NoVideoControls,
-                fit: isLandscape ? BoxFit.contain : BoxFit.cover,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 视频画面
+              Obx(() {
+                if (controller.currentIndex.value != widget.index) {
+                  return const SizedBox.shrink();
+                }
+
+                final videoController = controller.videoController;
+
+                if (!controller.ready.value || videoController == null) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
+
+                final videoWidth = controller.player.width ?? 0;
+                final videoHeight = controller.player.height ?? 0;
+                final videoIsLandscape = videoWidth > videoHeight;
+
+                return IgnorePointer(
+                  child: Video(
+                    controller: videoController,
+                    controls: NoVideoControls,
+                    fit: videoIsLandscape ? BoxFit.contain : BoxFit.cover,
+                  ),
+                );
+              }),
+
+              // 渐变遮罩
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.18),
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.65),
+                        ],
+                        stops: const [0, 0.55, 1],
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            );
-          }),
 
-          // 渐变遮罩
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.18),
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.65),
+              // 视频标题和UP主
+              Positioned(
+                left: 16,
+                right: 76,
+                bottom: titleBottom,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.owner.isNotEmpty)
+                      Text(
+                        '@${widget.owner}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: isCompact ? 14 : 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+
+                    const SizedBox(height: 8),
+
+                    Text(
+                      widget.title,
+                      maxLines: isCompact ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: isCompact ? 13 : 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 右侧五个互动按钮
+              Positioned(
+                right: 8,
+                bottom: actionBottom,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _FeedActionButton(
+                      icon: Icons.thumb_up_alt_outlined,
+                      label: '点赞',
+                      iconSize: iconSize,
+                      labelSize: labelSize,
+                      compact: isCompact,
+                      onTap: () => _showActionHint('点赞'),
+                    ),
+
+                    SizedBox(height: actionSpacing),
+
+                    _FeedActionButton(
+                      icon: Icons.mode_comment_outlined,
+                      label: '评论',
+                      iconSize: iconSize,
+                      labelSize: labelSize,
+                      compact: isCompact,
+                      onTap: () => _showActionHint('评论'),
+                    ),
+
+                    SizedBox(height: actionSpacing),
+
+                    _FeedActionButton(
+                      icon: Icons.monetization_on_outlined,
+                      label: '投币',
+                      iconSize: iconSize,
+                      labelSize: labelSize,
+                      compact: isCompact,
+                      onTap: () => _showActionHint('投币'),
+                    ),
+
+                    SizedBox(height: actionSpacing),
+
+                    _FeedActionButton(
+                      icon: Icons.star_border_rounded,
+                      label: '收藏',
+                      iconSize: iconSize,
+                      labelSize: labelSize,
+                      compact: isCompact,
+                      onTap: () => _showActionHint('收藏'),
+                    ),
+
+                    SizedBox(height: actionSpacing),
+
+                    _FeedActionButton(
+                      icon: Icons.share_outlined,
+                      label: '分享',
+                      iconSize: iconSize,
+                      labelSize: labelSize,
+                      compact: isCompact,
+                      onTap: () => _showActionHint('分享'),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 底部常驻播放进度条
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: progressBottom,
+                child: Obx(() {
+                  final player = controller.player;
+                  final duration = player.duration.value;
+                  final progress = player.progress;
+
+                  if (controller.currentIndex.value != widget.index ||
+                      !controller.ready.value ||
+                      duration <= 0) {
+                    return const SizedBox(height: 18);
+                  }
+
+                  final value = progress.clamp(0, duration).toDouble();
+
+                  return Row(
+                    children: [
+                      Text(
+                        _formatDuration(progress),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                        ),
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 2,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 5,
+                            ),
+                            overlayShape: const RoundSliderOverlayShape(
+                              overlayRadius: 12,
+                            ),
+                            activeTrackColor: Colors.white,
+                            inactiveTrackColor: Colors.white38,
+                            thumbColor: Colors.white,
+                            overlayColor: Colors.white24,
+                          ),
+                          child: Slider(
+                            min: 0,
+                            max: duration.toDouble(),
+                            value: value,
+                            onChangeStart: (value) {
+                              player.isSeeking.value = true;
+                              player.seekPosition.value = value.round();
+                            },
+                            onChanged: (value) {
+                              player.seekPosition.value = value.round();
+                            },
+                            onChangeEnd: (value) {
+                              player.isSeeking.value = false;
+                              player.seekTo(
+                                Duration(seconds: value.round()),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      Text(
+                        _formatDuration(duration),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                        ),
+                      ),
                     ],
-                    stops: const [0, 0.55, 1],
-                  ),
-                ),
+                  );
+                }),
               ),
-            ),
+            ],
           ),
-
-          // 视频标题和UP主
-          Positioned(
-            left: 16,
-            right: 76,
-            bottom: 76,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (widget.owner.isNotEmpty)
-                  Text(
-                    '@${widget.owner}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-
-                const SizedBox(height: 8),
-
-                Text(
-                  widget.title,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 右侧五个互动按钮
-          Positioned(
-            right: 10,
-            bottom: 112,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _FeedActionButton(
-                  icon: Icons.thumb_up_alt_outlined,
-                  label: '点赞',
-                  onTap: () => _showActionHint('点赞'),
-                ),
-
-                const SizedBox(height: 18),
-
-                _FeedActionButton(
-                  icon: Icons.mode_comment_outlined,
-                  label: '评论',
-                  onTap: () => _showActionHint('评论'),
-                ),
-
-                const SizedBox(height: 18),
-
-                _FeedActionButton(
-                  icon: Icons.monetization_on_outlined,
-                  label: '投币',
-                  onTap: () => _showActionHint('投币'),
-                ),
-
-                const SizedBox(height: 18),
-
-                _FeedActionButton(
-                  icon: Icons.star_border_rounded,
-                  label: '收藏',
-                  onTap: () => _showActionHint('收藏'),
-                ),
-
-                const SizedBox(height: 18),
-
-                _FeedActionButton(
-                  icon: Icons.share_outlined,
-                  label: '分享',
-                  onTap: () => _showActionHint('分享'),
-                ),
-              ],
-            ),
-          ),
-
-          // 底部常驻播放进度条
-          Positioned(
-            left: 12,
-            right: 12,
-            bottom: 32,
-            child: Obx(() {
-              final player = controller.player;
-              final duration = player.duration.value;
-              final progress = player.progress;
-
-              if (controller.currentIndex.value != widget.index ||
-                  !controller.ready.value ||
-                  duration <= 0) {
-                return const SizedBox(height: 18);
-              }
-
-              final value = progress.clamp(0, duration).toDouble();
-
-              return Row(
-                children: [
-                  Text(
-                    _formatDuration(progress),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 2,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 5,
-                        ),
-                        overlayShape: const RoundSliderOverlayShape(
-                          overlayRadius: 12,
-                        ),
-                        activeTrackColor: Colors.white,
-                        inactiveTrackColor: Colors.white38,
-                        thumbColor: Colors.white,
-                        overlayColor: Colors.white24,
-                      ),
-                      child: Slider(
-                        min: 0,
-                        max: duration.toDouble(),
-                        value: value,
-                        onChangeStart: (value) {
-                          player.isSeeking.value = true;
-                          player.seekPosition.value = value.round();
-                        },
-                        onChanged: (value) {
-                          player.seekPosition.value = value.round();
-                        },
-                        onChangeEnd: (value) {
-                          player.isSeeking.value = false;
-                          player.seekTo(
-                            Duration(seconds: value.round()),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  Text(
-                    _formatDuration(duration),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              );
-            }),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -455,37 +493,43 @@ class _FeedActionButton extends StatelessWidget {
   const _FeedActionButton({
     required this.icon,
     required this.label,
+    required this.iconSize,
+    required this.labelSize,
+    required this.compact,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
+  final double iconSize;
+  final double labelSize;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkResponse(
       onTap: onTap,
-      radius: 30,
+      radius: 28,
       child: SizedBox(
-        width: 52,
+        width: compact ? 44 : 52,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
               color: Colors.white,
-              size: 29,
+              size: iconSize,
             ),
 
-            const SizedBox(height: 4),
+            SizedBox(height: compact ? 2 : 4),
 
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
-                fontSize: 11,
-                shadows: [
+                fontSize: labelSize,
+                shadows: const [
                   Shadow(
                     color: Colors.black,
                     blurRadius: 4,
