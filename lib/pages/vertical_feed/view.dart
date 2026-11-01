@@ -162,6 +162,7 @@ _previousSpeed = controller.player.playbackSpeed;
 _speedBoostActive = true;
 
 if (mounted) setState(() {});
+
 await controller.player.setPlaybackSpeed(3.0);
 
 }
@@ -174,6 +175,7 @@ _speedBoostActive = false;
 _previousSpeed = null;
 
 if (mounted) setState(() {});
+
 await controller.player.setPlaybackSpeed(restoreSpeed);
 
 }
@@ -196,22 +198,17 @@ _singleTapTimer = Timer(
 
 }
 
-void _handleDoubleTap() {
+Future<void> _handleDoubleTap() async {
 _singleTapTimer?.cancel();
 
-controller.togglePlayPause();
+final wasPlaying = controller.player.playerStatus.isPlaying;
+
+await controller.togglePlayPause();
 
 if (!mounted) return;
-setState(() {
-  _showPaused = controller.player.playerStatus.isPlaying;
-});
 
-Future.delayed(const Duration(milliseconds: 900), () {
-  if (mounted) {
-    setState(() {
-      _showPaused = false;
-    });
-  }
+setState(() {
+  _showPaused = wasPlaying;
 });
 
 }
@@ -280,6 +277,7 @@ controller.player.isSeeking.value = true;
 controller.player.seekPosition.value = value.round();
 
 _bufferTimer?.cancel();
+
 if (mounted) {
   setState(() {
     _showBuffering = true;
@@ -338,7 +336,8 @@ final height = constraints.maxHeight;
     final labelSize = isCompact ? 10.0 : 11.0;
 
     final bottomInset = MediaQuery.paddingOf(context).bottom;
-    final progressBottom = bottomInset > 0 ? bottomInset + 8 : 24.0;
+    final progressBottom =
+        bottomInset > 0 ? bottomInset + 8 : 24.0;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -350,7 +349,7 @@ final height = constraints.maxHeight;
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 视频画面
+          // 视频画面：横屏恢复原始显示区域，只整体上移，不再缩小
           Obx(() {
             if (controller.currentIndex.value != widget.index) {
               return const SizedBox.shrink();
@@ -368,20 +367,20 @@ final height = constraints.maxHeight;
             final videoHeight = controller.player.height ?? 0;
             final videoIsLandscape = videoWidth > videoHeight;
 
+            final video = Video(
+              controller: videoController,
+              controls: NoVideoControls,
+              fit: videoIsLandscape ? BoxFit.contain : BoxFit.cover,
+            );
+
+            if (!videoIsLandscape) {
+              return IgnorePointer(child: video);
+            }
+
             return IgnorePointer(
-              child: AnimatedPadding(
-                duration: const Duration(milliseconds: 220),
-                padding: videoIsLandscape
-                    ? EdgeInsets.only(
-                        bottom: height * 0.16,
-                        right: 64,
-                      )
-                    : EdgeInsets.zero,
-                child: Video(
-                  controller: videoController,
-                  controls: NoVideoControls,
-                  fit: videoIsLandscape ? BoxFit.contain : BoxFit.cover,
-                ),
+              child: Transform.translate(
+                offset: Offset(0, -height * 0.08),
+                child: video,
               ),
             );
           }),
@@ -521,7 +520,7 @@ final height = constraints.maxHeight;
             ),
           ],
 
-          // 暂停提示
+          // 暂停标志：暂停期间常驻，播放后消失
           if (_showPaused)
             Center(
               child: Container(
@@ -538,24 +537,29 @@ final height = constraints.maxHeight;
               ),
             ),
 
-          // 3 倍速提示
+          // 倍速提示：移动到视频上方的黑色区域
           if (_speedBoostActive)
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 13,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.62),
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                child: const Text(
-                  '3.0倍速中',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
+            Positioned(
+              top: height * 0.13,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 13,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.62),
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                  child: const Text(
+                    '3.0倍速中',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
@@ -564,6 +568,7 @@ final height = constraints.maxHeight;
           // 缓冲提示
           Obx(() {
             final buffering = controller.player.isBuffering.value;
+
             if (buffering && controller.ready.value) {
               if (!_showBuffering) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
