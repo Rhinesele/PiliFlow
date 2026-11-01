@@ -192,6 +192,16 @@ class _VideoPageState extends State<_VideoPage> {
     return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
+  void _showActionHint(String name) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$name功能正在接入'),
+        duration: const Duration(milliseconds: 900),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     if (_speedBoostActive) {
@@ -225,6 +235,7 @@ class _VideoPageState extends State<_VideoPage> {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          // 视频画面
           Obx(() {
             if (controller.currentIndex.value != widget.index) {
               return const SizedBox.shrink();
@@ -251,6 +262,7 @@ class _VideoPageState extends State<_VideoPage> {
             );
           }),
 
+          // 渐变遮罩
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -270,10 +282,11 @@ class _VideoPageState extends State<_VideoPage> {
             ),
           ),
 
+          // 视频标题和UP主
           Positioned(
             left: 16,
-            right: 24,
-            bottom: 52,
+            right: 76,
+            bottom: 76,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -304,11 +317,59 @@ class _VideoPageState extends State<_VideoPage> {
             ),
           ),
 
+          // 右侧五个互动按钮
+          Positioned(
+            right: 10,
+            bottom: 112,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _FeedActionButton(
+                  icon: Icons.thumb_up_alt_outlined,
+                  label: '点赞',
+                  onTap: () => _showActionHint('点赞'),
+                ),
+
+                const SizedBox(height: 18),
+
+                _FeedActionButton(
+                  icon: Icons.mode_comment_outlined,
+                  label: '评论',
+                  onTap: () => _showActionHint('评论'),
+                ),
+
+                const SizedBox(height: 18),
+
+                _FeedActionButton(
+                  icon: Icons.monetization_on_outlined,
+                  label: '投币',
+                  onTap: () => _showActionHint('投币'),
+                ),
+
+                const SizedBox(height: 18),
+
+                _FeedActionButton(
+                  icon: Icons.star_border_rounded,
+                  label: '收藏',
+                  onTap: () => _showActionHint('收藏'),
+                ),
+
+                const SizedBox(height: 18),
+
+                _FeedActionButton(
+                  icon: Icons.share_outlined,
+                  label: '分享',
+                  onTap: () => _showActionHint('分享'),
+                ),
+              ],
+            ),
+          ),
+
           // 底部常驻播放进度条
           Positioned(
             left: 12,
             right: 12,
-            bottom: 8,
+            bottom: 32,
             child: Obx(() {
               final player = controller.player;
               final duration = player.duration.value;
@@ -384,6 +445,56 @@ class _VideoPageState extends State<_VideoPage> {
             }),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// 竖屏视频流互动按钮
+class _FeedActionButton extends StatelessWidget {
+  const _FeedActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkResponse(
+      onTap: onTap,
+      radius: 30,
+      child: SizedBox(
+        width: 52,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: Colors.white,
+              size: 29,
+            ),
+
+            const SizedBox(height: 4),
+
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                shadows: [
+                  Shadow(
+                    color: Colors.black,
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
