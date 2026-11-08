@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/http/member.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/common/account_type.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
@@ -10,6 +11,7 @@ import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/utils/accounts.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:flutter/widgets.dart' show ScrollController;
@@ -22,8 +24,7 @@ enum VerticalFeedPlayMode {
   stop,
 }
 
-class VerticalFeedController extends GetxController
-    with ScrollOrRefreshMixin {
+class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
   final videos = <RcmdVideoItemAppModel>[].obs;
   final currentIndex = 0.obs;
   final ready = false.obs;
@@ -33,15 +34,24 @@ class VerticalFeedController extends GetxController
 
   final liked = false.obs;
   final liking = false.obs;
+  final coined = false.obs;
+  final coining = false.obs;
+
+  final ownerFace = ''.obs;
+  final ownerFans = 0.obs;
+  final ownerName = ''.obs;
+  final ownerMid = 0.obs;
+
   final playMode = VerticalFeedPlayMode.autoNext.obs;
 
   final Map<String, bool> _likeCache = {};
+  final Map<String, bool> _coinCache = {};
+  final Map<int, ({String face, int fans, String name})> _ownerCache = {};
 
   @override
   final ScrollController scrollController = ScrollController();
 
-  late final PlPlayerController player =
-      PlPlayerController.getInstance();
+  late final PlPlayerController player = PlPlayerController.getInstance();
 
   VideoController? get videoController => player.videoController;
 
@@ -58,57 +68,31 @@ class VerticalFeedController extends GetxController
     loadMore();
   }
 
-  String get playModeName {
-    switch (playMode.value) {
-      case VerticalFeedPlayMode.autoNext:
-        return '自动连播';
-      case VerticalFeedPlayMode.loopCurrent:
-        return '循环当前';
-      case VerticalFeedPlayMode.stop:
-        return '播完停止';
-    }
-  }
-
   void setPlayMode(VerticalFeedPlayMode mode) {
     playMode.value = mode;
   }
 
-  // 这里必须是同步回调，不能写成 Future<void>。
   void _onPlayerStatus(PlayerStatus status) {
-    if (status != PlayerStatus.completed ||
-        _disposed ||
-        _handlingCompletion) {
+    if (status != PlayerStatus.completed || _disposed || _handlingCompletion) {
       return;
     }
-
     unawaited(_handleCompleted());
   }
 
-  // 真正的异步播放结束处理放在这里。
   Future<void> _handleCompleted() async {
     if (_disposed || _handlingCompletion) return;
-
     _handlingCompletion = true;
-
     try {
       switch (playMode.value) {
         case VerticalFeedPlayMode.autoNext:
           await _playNextVideo();
-          break;
-
         case VerticalFeedPlayMode.loopCurrent:
           await player.seekTo(Duration.zero);
-          if (!_disposed) {
-            await player.play();
-          }
-          break;
-
+          if (!_disposed) await player.play();
         case VerticalFeedPlayMode.stop:
           await player.pause();
-          break;
       }
     } catch (_) {
-      // 播放结束后的操作失败时，不让监听器崩溃。
     } finally {
       _handlingCompletion = false;
     }
@@ -116,18 +100,13 @@ class VerticalFeedController extends GetxController
 
   Future<void> _playNextVideo() async {
     if (_disposed) return;
-
     final next = currentIndex.value + 1;
-
     if (next < videos.length) {
       onCompleted?.call(next);
       return;
     }
-
     await loadMore();
-
     if (_disposed) return;
-
     if (currentIndex.value + 1 < videos.length) {
       onCompleted?.call(currentIndex.value + 1);
     }
@@ -143,30 +122,22 @@ class VerticalFeedController extends GetxController
     ready.value = false;
     error.value = null;
     _likeCache.clear();
-
+    _coinCache.clear();
     await loadMore();
   }
 
   Future<void> loadMore() async {
     if (loading.value || _disposed) return;
-
     loading.value = true;
     error.value = null;
-
     try {
-      final res = await VideoHttp.rcmdVideoListApp(
-        freshIdx: _freshIdx,
-      );
-
+      final res = await VideoHttp.rcmdVideoListApp(freshIdx: _freshIdx);
       if (_disposed) return;
-
       if (res case Success(:final response)) {
         if (response.isNotEmpty) {
           final wasEmpty = videos.isEmpty;
-
           videos.addAll(response);
           _freshIdx += response.length;
-
           if (wasEmpty) {
             unawaited(playIndex(0));
           }
@@ -175,29 +146,29 @@ class VerticalFeedController extends GetxController
         error.value = errMsg;
       }
     } catch (e) {
-      if (!_disposed) {
-        error.value = e.toString();
-      }
+      if (!_disposed) error.value = e.toString();
     } finally {
-      if (!_disposed) {
-        loading.value = false;
-      }
+      if (!_disposed) loading.value = false;
     }
   }
 
   Future<void> playIndex(int index) async {
-    if (_disposed || index < 0 || index >= videos.length) {
-      return;
-    }
+    if (_disposed || index < 0 || index >= videos.length) return;
 
     currentIndex.value = index;
     ready.value = false;
     liking.value = false;
+    coining.value = false;
 
     final token = ++_loadToken;
     final item = videos[index];
     final bvid = item.bvid;
     final cid = item.cid;
+
+    ownerName.value = item.owner?.name ?? '';
+    ownerMid.value = item.owner?.mid ?? 0;
+    ownerFace.value = '';
+    ownerFans.value = 0;
 
     if (bvid == null || cid == null) {
       error.value = '该视频缺少播放信息';
@@ -205,21 +176,20 @@ class VerticalFeedController extends GetxController
     }
 
     liked.value = _likeCache[bvid] ?? false;
-    unawaited(_loadLikeStatus(bvid, token));
+    coined.value = _coinCache[bvid] ?? false;
+
+    unawaited(_loadRelation(bvid, token));
+    unawaited(_loadOwnerInfo(item.owner?.mid, token));
 
     try {
-      await player.pause(
-        notify: false,
-        isInterrupt: true,
-      );
+      await player.pause(notify: false, isInterrupt: true);
 
       final res = await VideoHttp.videoUrl(
         avid: item.aid,
         bvid: bvid,
         cid: cid,
         qn: Pref.defaultVideoQa,
-        tryLook: !Accounts.get(AccountType.video).isLogin &&
-            Pref.p1080,
+        tryLook: !Accounts.get(AccountType.video).isLogin && Pref.p1080,
         videoType: VideoType.ugc,
       );
 
@@ -227,30 +197,20 @@ class VerticalFeedController extends GetxController
 
       if (res case Success(:final response)) {
         final dash = response.dash;
-
-        final video = dash?.video?.isNotEmpty == true
-            ? dash!.video!.first
-            : null;
-
-        final audio = dash?.audio?.isNotEmpty == true
-            ? dash!.audio!.first
-            : null;
+        final video =
+            dash?.video?.isNotEmpty == true ? dash!.video!.first : null;
+        final audio =
+            dash?.audio?.isNotEmpty == true ? dash!.audio!.first : null;
 
         if (video == null) {
           error.value = '该视频没有可用的视频流';
           return;
         }
 
-        final videoUrl = VideoUtils.getCdnUrl(
-          video.playUrls,
-        );
-
+        final videoUrl = VideoUtils.getCdnUrl(video.playUrls);
         final audioUrl = audio == null
             ? null
-            : VideoUtils.getCdnUrl(
-                audio.playUrls,
-                isAudio: true,
-              );
+            : VideoUtils.getCdnUrl(audio.playUrls, isAudio: true);
 
         if (videoUrl == null || videoUrl.isEmpty) {
           error.value = '视频地址获取失败';
@@ -258,15 +218,10 @@ class VerticalFeedController extends GetxController
         }
 
         await player.setDataSource(
-          NetworkSource(
-            videoSource: videoUrl,
-            audioSource: audioUrl,
-          ),
+          NetworkSource(videoSource: videoUrl, audioSource: audioUrl),
           duration: response.timeLength == null
               ? null
-              : Duration(
-                  milliseconds: response.timeLength!,
-                ),
+              : Duration(milliseconds: response.timeLength!),
           isVertical: true,
           aid: item.aid,
           bvid: bvid,
@@ -280,14 +235,9 @@ class VerticalFeedController extends GetxController
         if (_disposed || token != _loadToken) return;
 
         ready.value = true;
-
         if (muted.value) {
-          await player.setVolume(
-            0,
-            showIndicator: false,
-          );
+          await player.setVolume(0, showIndicator: false);
         }
-
         await player.play();
       } else if (res case Error(:final errMsg)) {
         error.value = errMsg;
@@ -299,91 +249,129 @@ class VerticalFeedController extends GetxController
     }
   }
 
-  Future<void> _loadLikeStatus(
-    String bvid,
-    int token,
-  ) async {
+  Future<void> _loadRelation(String bvid, int token) async {
     try {
-      final res = await VideoHttp.videoRelation(
-        bvid: bvid,
-      );
-
-      if (_disposed ||
-          token != _loadToken ||
-          currentIndex.value < 0 ||
-          currentIndex.value >= videos.length) {
-        return;
-      }
-
+      final res = await VideoHttp.videoRelation(bvid: bvid);
+      if (_disposed || token != _loadToken) return;
       if (res case Success(:final response)) {
-        final value = response.like ?? false;
-        _likeCache[bvid] = value;
-        liked.value = value;
+        final like = response.like ?? false;
+        final coin = (response.coin ?? 0) > 0;
+        _likeCache[bvid] = like;
+        _coinCache[bvid] = coin;
+        liked.value = like;
+        coined.value = coin;
       }
-    } catch (_) {
-      // 网络读取失败时保留原状态。
+    } catch (_) {}
+  }
+
+  Future<void> _loadOwnerInfo(int? mid, int token) async {
+    if (mid == null || mid <= 0) return;
+
+    final cached = _ownerCache[mid];
+    if (cached != null) {
+      if (!_disposed && token == _loadToken) {
+        ownerFace.value = cached.face;
+        ownerFans.value = cached.fans;
+        if (cached.name.isNotEmpty) ownerName.value = cached.name;
+      }
+      return;
     }
+
+    try {
+      final res = await MemberHttp.memberCardInfo(mid: mid);
+      if (_disposed || token != _loadToken) return;
+      if (res case Success(:final response)) {
+        final face = response.card?.face ?? '';
+        final fans = response.follower ?? 0;
+        final name = response.card?.name ?? ownerName.value;
+        _ownerCache[mid] = (face: face, fans: fans, name: name);
+        ownerFace.value = face;
+        ownerFans.value = fans;
+        if (name.isNotEmpty) ownerName.value = name;
+      }
+    } catch (_) {}
   }
 
   Future<bool> toggleLike() async {
     if (liking.value) return false;
-
-    if (!Accounts.get(AccountType.video).isLogin) {
-      return false;
-    }
-
-    if (currentIndex.value < 0 ||
-        currentIndex.value >= videos.length) {
+    if (!Accounts.get(AccountType.video).isLogin) return false;
+    if (currentIndex.value < 0 || currentIndex.value >= videos.length) {
       return false;
     }
 
     final bvid = videos[currentIndex.value].bvid;
-
-    if (bvid == null || bvid.isEmpty) {
-      return false;
-    }
+    if (bvid == null || bvid.isEmpty) return false;
 
     liking.value = true;
-
     try {
       final oldValue = liked.value;
-
-      final res = await VideoHttp.likeVideo(
-        bvid: bvid,
-        type: oldValue,
-      );
-
+      final res = await VideoHttp.likeVideo(bvid: bvid, type: oldValue);
       if (_disposed) return false;
-
       if (res case Success()) {
         final newValue = !oldValue;
         liked.value = newValue;
         _likeCache[bvid] = newValue;
         return true;
       }
-
       return false;
     } catch (_) {
       return false;
     } finally {
-      if (!_disposed) {
-        liking.value = false;
-      }
+      if (!_disposed) liking.value = false;
     }
+  }
+
+  Future<bool> coinOne() async {
+    if (coining.value) return false;
+    if (!Accounts.get(AccountType.video).isLogin) return false;
+    if (currentIndex.value < 0 || currentIndex.value >= videos.length) {
+      return false;
+    }
+    if (coined.value) return true;
+
+    final bvid = videos[currentIndex.value].bvid;
+    if (bvid == null || bvid.isEmpty) return false;
+
+    coining.value = true;
+    try {
+      final res = await VideoHttp.coinVideo(bvid: bvid, multiply: 1);
+      if (_disposed) return false;
+      if (res case Success()) {
+        coined.value = true;
+        _coinCache[bvid] = true;
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    } finally {
+      if (!_disposed) coining.value = false;
+    }
+  }
+
+  Future<void> openComments() async {
+    if (currentIndex.value < 0 || currentIndex.value >= videos.length) return;
+    final item = videos[currentIndex.value];
+    final cid = item.cid;
+    if (cid == null) return;
+
+    await PageUtils.toVideoPage(
+      aid: item.aid,
+      bvid: item.bvid,
+      cid: cid,
+      title: item.title,
+      cover: item.cover,
+      isVertical: true,
+    );
   }
 
   Future<void> toggleMute() async {
     muted.toggle();
-
-    await player.setVolume(
-      muted.value ? 0 : 1,
-      showIndicator: false,
-    );
+    await player.setVolume(muted.value ? 0 : 1, showIndicator: false);
   }
 
   Future<void> togglePlayPause() async {
     if (player.videoPlayerController == null) return;
-
     if (player.playerStatus.isPlaying) {
       await player.pause();
     } else {
@@ -393,9 +381,7 @@ class VerticalFeedController extends GetxController
 
   void disposePlayer() {
     if (_disposed) return;
-
     _disposed = true;
-
     player.removeStatusLister(_onPlayerStatus);
     player.dispose();
   }
