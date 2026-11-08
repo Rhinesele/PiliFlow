@@ -13,181 +13,233 @@ import 'package:material_ui/material_ui.dart';
 
 /// 传入播放器控制器，监听播放进度，加载对应弹幕
 class PlDanmaku extends StatefulWidget {
-  final int cid;
-  final PlPlayerController playerController;
-  final bool isPipMode;
-  final bool isFullScreen;
-  final bool isFileSource;
-  final Size size;
+final int cid;
+final PlPlayerController playerController;
+final bool isPipMode;
+final bool isFullScreen;
+final bool isFileSource;
+final Size size;
 
-  const PlDanmaku({
-    super.key,
-    required this.cid,
-    required this.playerController,
-    this.isPipMode = false,
-    required this.isFullScreen,
-    required this.isFileSource,
-    required this.size,
-  });
+const PlDanmaku({
+super.key,
+required this.cid,
+required this.playerController,
+this.isPipMode = false,
+required this.isFullScreen,
+required this.isFileSource,
+required this.size,
+});
 
-  @override
-  State<PlDanmaku> createState() => _PlDanmakuState();
+@override
+State<PlDanmaku> createState() => _PlDanmakuState();
 
-  bool get notFullscreen => !isFullScreen || isPipMode;
+bool get notFullscreen => !isFullScreen || isPipMode;
 }
 
 class _PlDanmakuState extends State<PlDanmaku> {
-  PlPlayerController get playerController => widget.playerController;
+PlPlayerController get playerController => widget.playerController;
 
-  late final PlDanmakuController _plDanmakuController;
-  DanmakuController<DanmakuExtra>? _controller;
-  int latestAddedPosition = -1;
+late final PlDanmakuController _plDanmakuController;
+DanmakuController<DanmakuExtra>? _controller;
 
-  @override
-  void initState() {
-    super.initState();
-    _plDanmakuController = PlDanmakuController(
-      widget.cid,
-      playerController,
-      widget.isFileSource,
-    );
-    if (playerController.enableShowDanmaku.value) {
-      if (widget.isFileSource) {
-        _plDanmakuController.initFileDmIfNeeded();
-      } else {
-        _plDanmakuController.queryDanmaku(
-          DmUtils.calcSegment(playerController.positionInMilliseconds),
-        );
-      }
-    }
-    playerController
-      ..addStatusLister(playerListener)
-      ..addPositionListener(videoPositionListen);
-  }
+Worker? _danmakuEnableWorker;
 
-  @override
-  void didUpdateWidget(PlDanmaku oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.notFullscreen != widget.notFullscreen &&
-        !DanmakuOptions.sameFontScale) {
-      _controller?.updateOption(
-        DanmakuOptions.get(
-          notFullscreen: widget.notFullscreen,
-          speed: playerController.playbackSpeed,
-        ),
-      );
-    }
-  }
+int latestAddedPosition = -1;
 
-  // 播放器状态监听
-  void playerListener(PlayerStatus status) {
-    if (_controller case final controller?) {
-      if (status.isPlaying) {
-        controller.resume();
-      } else {
-        controller.pause();
-      }
-    }
-  }
+@override
+void initState() {
+super.initState();
 
-  @pragma('vm:notify-debugger-on-exception')
-  void videoPositionListen(Duration position) {
-    if (_controller == null || !playerController.enableShowDanmaku.value) {
+_plDanmakuController = PlDanmakuController(
+  widget.cid,
+  playerController,
+  widget.isFileSource,
+);
+
+// 根据当前弹幕开关决定是否初始化弹幕数据
+if (playerController.enableShowDanmaku.value) {
+  _loadCurrentDanmaku();
+}
+
+// 监听弹幕开关变化
+// 关闭时停止显示；开启时重新请求当前播放位置的弹幕段
+_danmakuEnableWorker = ever(
+  playerController.enableShowDanmaku,
+  (bool enabled) {
+    if (!enabled) {
       return;
     }
 
-    if (!playerController.showDanmaku && !widget.isPipMode) {
-      return;
-    }
+    latestAddedPosition = -1;
+    _loadCurrentDanmaku();
+  },
+);
 
-    if (!playerController.playerStatus.isPlaying) {
-      return;
-    }
+playerController
+  ..addStatusLister(playerListener)
+  ..addPositionListener(videoPositionListen);
 
-    int currentPosition = position.inMilliseconds;
-    currentPosition -= currentPosition % 100; //取整百的毫秒数
-    if (currentPosition == latestAddedPosition) {
-      return;
-    }
-    latestAddedPosition = currentPosition;
+}
 
-    List<DanmakuElem>? currentDanmakuList = _plDanmakuController
-        .getCurrentDanmaku(currentPosition);
-    if (currentDanmakuList != null) {
-      final blockColorful = DanmakuOptions.blockColorful;
-      final danmakuWeight = DanmakuOptions.danmakuWeight;
-      for (DanmakuElem e in currentDanmakuList) {
-        if (e.weight < danmakuWeight) return;
-        if (e.mode == 7) {
-          try {
-            _controller!.addDanmaku(
-              SpecialDanmakuContentItem.fromList(
-                DmUtils.decimalToColor(e.color),
-                e.fontsize.toDouble(),
-                jsonDecode(e.content.replaceAll('\n', '\\n')),
-                extra: VideoDanmaku(
-                  id: e.id.toInt(),
-                  mid: e.midHash,
-                  like: e.likeCount.toInt(),
-                ),
-              ),
-            );
-          } catch (_) {}
-        } else {
-          _controller!.addDanmaku(
-            DanmakuContentItem(
-              e.content,
-              color: blockColorful
-                  ? Colors.white
-                  : DmUtils.decimalToColor(e.color),
-              type: DmUtils.getPosition(e.mode),
-              isColorful:
-                  playerController.showVipDanmaku &&
-                  e.colorful == DmColorfulType.VipGradualColor,
-              count: e.count > 1 ? e.count : null,
-              selfSend: e.isSelf,
-              extra: VideoDanmaku(
-                id: e.id.toInt(),
-                mid: e.midHash,
-                like: e.likeCount.toInt(),
-              ),
-            ),
-          );
-        }
-      }
-    }
-  }
+/// 加载当前播放位置对应的弹幕段
+void _loadCurrentDanmaku() {
+if (widget.isFileSource) {
+_plDanmakuController.initFileDmIfNeeded();
+} else {
+final segmentIndex = DmUtils.calcSegment(
+playerController.positionInMilliseconds,
+);
+_plDanmakuController.queryDanmaku(segmentIndex);
+}
+}
 
-  @override
-  void dispose() {
-    playerController
-      ..removePositionListener(videoPositionListen)
-      ..removeStatusLister(playerListener);
-    _plDanmakuController.dispose();
-    _controller = null;
-    super.dispose();
-  }
+@override
+void didUpdateWidget(PlDanmaku oldWidget) {
+super.didUpdateWidget(oldWidget);
 
-  @override
-  Widget build(BuildContext context) {
-    final option = DanmakuOptions.get(
+if (oldWidget.notFullscreen != widget.notFullscreen &&
+    !DanmakuOptions.sameFontScale) {
+  _controller?.updateOption(
+    DanmakuOptions.get(
       notFullscreen: widget.notFullscreen,
       speed: playerController.playbackSpeed,
-    );
-    return Obx(
-      () => AnimatedOpacity(
-        opacity: playerController.enableShowDanmaku.value
-            ? playerController.danmakuOpacity.value
-            : 0,
-        duration: const Duration(milliseconds: 100),
-        child: DanmakuScreen<DanmakuExtra>(
-          createdController: (e) {
-            playerController.danmakuController = _controller = e;
-          },
-          option: option,
-          size: widget.size,
+    ),
+  );
+}
+
+}
+
+/// 播放器状态监听
+void playerListener(PlayerStatus status) {
+if (_controller case final controller?) {
+if (status.isPlaying) {
+controller.resume();
+} else {
+controller.pause();
+}
+}
+}
+
+@pragma('vm:notify-debugger-on-exception')
+void videoPositionListen(Duration position) {
+if (_controller == null ||
+!playerController.enableShowDanmaku.value) {
+return;
+}
+
+if (!playerController.showDanmaku && !widget.isPipMode) {
+  return;
+}
+
+if (!playerController.playerStatus.isPlaying) {
+  return;
+}
+
+int currentPosition = position.inMilliseconds;
+currentPosition -= currentPosition % 100;
+
+if (currentPosition == latestAddedPosition) {
+  return;
+}
+
+latestAddedPosition = currentPosition;
+
+final currentDanmakuList =
+    _plDanmakuController.getCurrentDanmaku(currentPosition);
+
+if (currentDanmakuList == null) {
+  return;
+}
+
+final blockColorful = DanmakuOptions.blockColorful;
+final danmakuWeight = DanmakuOptions.danmakuWeight;
+
+for (DanmakuElem e in currentDanmakuList) {
+  if (e.weight < danmakuWeight) {
+    continue;
+  }
+
+  if (e.mode == 7) {
+    try {
+      _controller!.addDanmaku(
+        SpecialDanmakuContentItem.fromList(
+          DmUtils.decimalToColor(e.color),
+          e.fontsize.toDouble(),
+          jsonDecode(
+            e.content.replaceAll('\n', '\\n'),
+          ),
+          extra: VideoDanmaku(
+            id: e.id.toInt(),
+            mid: e.midHash,
+            like: e.likeCount.toInt(),
+          ),
+        ),
+      );
+    } catch (_) {}
+  } else {
+    _controller!.addDanmaku(
+      DanmakuContentItem(
+        e.content,
+        color: blockColorful
+            ? Colors.white
+            : DmUtils.decimalToColor(e.color),
+        type: DmUtils.getPosition(e.mode),
+        isColorful: playerController.showVipDanmaku &&
+            e.colorful ==
+                DmColorfulType.VipGradualColor,
+        count: e.count > 1 ? e.count : null,
+        selfSend: e.isSelf,
+        extra: VideoDanmaku(
+          id: e.id.toInt(),
+          mid: e.midHash,
+          like: e.likeCount.toInt(),
         ),
       ),
     );
   }
+}
+
+}
+
+@override
+void dispose() {
+// 移除弹幕开关监听
+_danmakuEnableWorker?.dispose();
+
+// 移除播放器监听
+playerController
+  ..removePositionListener(videoPositionListen)
+  ..removeStatusLister(playerListener);
+
+_plDanmakuController.dispose();
+_controller = null;
+
+super.dispose();
+
+}
+
+@override
+Widget build(BuildContext context) {
+final option = DanmakuOptions.get(
+notFullscreen: widget.notFullscreen,
+speed: playerController.playbackSpeed,
+);
+
+return Obx(
+  () => AnimatedOpacity(
+    opacity: playerController.enableShowDanmaku.value
+        ? playerController.danmakuOpacity.value
+        : 0,
+    duration: const Duration(milliseconds: 100),
+    child: DanmakuScreen<DanmakuExtra>(
+      createdController: (e) {
+        playerController.danmakuController = _controller = e;
+      },
+      option: option,
+      size: widget.size,
+    ),
+  ),
+);
+
+}
 }
