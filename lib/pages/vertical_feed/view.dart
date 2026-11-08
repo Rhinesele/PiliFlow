@@ -105,7 +105,9 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
               Text(
                 controller.error.value!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 12),
               FilledButton(
@@ -142,69 +144,85 @@ class _VideoPage extends StatefulWidget {
 
 class _VideoPageState extends State<_VideoPage> {
   double? _previousSpeed;
+
   bool _speedBoostActive = false;
   bool _showPaused = false;
   bool _showBuffering = false;
 
-  Timer? _singleTapTimer;
   Timer? _bufferTimer;
 
   VerticalFeedController get controller => widget.controller;
 
+  // ============================================================
+  // 3倍速
+  // ============================================================
+
   Future<void> _startFastPlayback() async {
-    if (_speedBoostActive || !controller.ready.value) return;
-    if (!controller.player.playerStatus.isPlaying) return;
+    if (_speedBoostActive || !controller.ready.value) {
+      return;
+    }
+
+    if (!controller.player.playerStatus.isPlaying) {
+      return;
+    }
 
     _previousSpeed = controller.player.playbackSpeed;
     _speedBoostActive = true;
 
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
 
     await controller.player.setPlaybackSpeed(3.0);
   }
 
   Future<void> _stopFastPlayback() async {
-    if (!_speedBoostActive) return;
+    if (!_speedBoostActive) {
+      return;
+    }
 
     final speed = _previousSpeed ?? 1.0;
+
     _speedBoostActive = false;
     _previousSpeed = null;
 
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
 
     await controller.player.setPlaybackSpeed(speed);
   }
 
-  void _handleTap() {
-    if (_singleTapTimer?.isActive == true) {
-      _singleTapTimer!.cancel();
-      return;
-    }
+  // ============================================================
+  // 视频点击
+  // ============================================================
 
-    _singleTapTimer = Timer(
-      const Duration(milliseconds: 260),
-      () {
-        if (!mounted) return;
-        _showSettingsMenu();
-      },
-    );
-  }
+  // 单击视频不打开播放设置。
+  // 播放设置只由右上角按钮触发。
+  void _handleTap() {}
 
   Future<void> _handleDoubleTap() async {
-    _singleTapTimer?.cancel();
-
     final wasPlaying = controller.player.playerStatus.isPlaying;
+
     await controller.togglePlayPause();
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       _showPaused = wasPlaying;
     });
   }
 
+  // ============================================================
+  // 提示
+  // ============================================================
+
   void _showMessage(String message) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -217,8 +235,14 @@ class _VideoPageState extends State<_VideoPage> {
       );
   }
 
+  // ============================================================
+  // 点赞
+  // ============================================================
+
   Future<void> _toggleLike() async {
-    if (controller.liking.value) return;
+    if (controller.liking.value) {
+      return;
+    }
 
     if (!AccountsLoginCheck.isLoggedIn()) {
       _showMessage('请先登录哔哩哔哩账号');
@@ -227,7 +251,9 @@ class _VideoPageState extends State<_VideoPage> {
 
     final success = await controller.toggleLike();
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     _showMessage(
       success
@@ -236,8 +262,13 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
+  // ============================================================
+  // 分享
+  // ============================================================
+
   Future<void> _shareVideo() async {
-    if (widget.index < 0 || widget.index >= controller.videos.length) {
+    if (widget.index < 0 ||
+        widget.index >= controller.videos.length) {
       _showMessage('无法获取视频信息');
       return;
     }
@@ -256,22 +287,33 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
+  // ============================================================
+  // 播放设置菜单
+  // ============================================================
+
   void _showSettingsMenu() {
+    if (!mounted) {
+      return;
+    }
+
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: const Color(0xFF202020),
+      isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(18),
         ),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Obx(() {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 12),
+
                 Container(
                   width: 36,
                   height: 4,
@@ -280,7 +322,9 @@ class _VideoPageState extends State<_VideoPage> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
+
                 const SizedBox(height: 16),
+
                 const Text(
                   '播放设置',
                   style: TextStyle(
@@ -289,10 +333,16 @@ class _VideoPageState extends State<_VideoPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+
+                const SizedBox(height: 8),
+
+                // 弹幕开关
                 SwitchListTile(
                   title: const Text(
                     '显示弹幕',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(
+                      color: Colors.white,
+                    ),
                   ),
                   secondary: const Icon(
                     Icons.subtitles_outlined,
@@ -304,22 +354,32 @@ class _VideoPageState extends State<_VideoPage> {
                     controller.player.enableShowDanmaku.value = value;
                   },
                 ),
-                const Divider(color: Colors.white12),
+
+                const Divider(
+                  color: Colors.white12,
+                ),
+
+                // 自动连播
                 _modeTile(
-                  context,
+                  sheetContext,
                   '自动连播',
                   VerticalFeedPlayMode.autoNext,
                 ),
+
+                // 循环当前视频
                 _modeTile(
-                  context,
+                  sheetContext,
                   '循环当前视频',
                   VerticalFeedPlayMode.loopCurrent,
                 ),
+
+                // 播完停止
                 _modeTile(
-                  context,
+                  sheetContext,
                   '播完停止',
                   VerticalFeedPlayMode.stop,
                 ),
+
                 const SizedBox(height: 12),
               ],
             );
@@ -351,10 +411,14 @@ class _VideoPageState extends State<_VideoPage> {
           : null,
       onTap: () {
         controller.setPlayMode(mode);
-        Navigator.pop(context);
+        Navigator.of(context).pop();
       },
     );
   }
+
+  // ============================================================
+  // 时间格式
+  // ============================================================
 
   String _formatDuration(int seconds) {
     final duration = Duration(seconds: seconds);
@@ -362,6 +426,10 @@ class _VideoPageState extends State<_VideoPage> {
     return '${duration.inMinutes}:'
         '${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
   }
+
+  // ============================================================
+  // 进度条
+  // ============================================================
 
   void _onSeekStart(double value) {
     controller.player.isSeeking.value = true;
@@ -378,6 +446,7 @@ class _VideoPageState extends State<_VideoPage> {
 
   void _onSeekEnd(double value) {
     controller.player.isSeeking.value = false;
+
     controller.player.seekTo(
       Duration(seconds: value.round()),
     );
@@ -396,9 +465,12 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
+  // ============================================================
+  // 生命周期
+  // ============================================================
+
   @override
   void dispose() {
-    _singleTapTimer?.cancel();
     _bufferTimer?.cancel();
 
     if (_speedBoostActive) {
@@ -410,30 +482,52 @@ class _VideoPageState extends State<_VideoPage> {
     super.dispose();
   }
 
+  // ============================================================
+  // 页面
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
+
         final landscape = width > height;
         final compact = height < 680 || landscape;
 
         final bottomInset = MediaQuery.paddingOf(context).bottom;
+
         final progressBottom =
             bottomInset > 0 ? bottomInset + 8 : 24.0;
 
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
+
+          // 单击不打开菜单
           onTap: _handleTap,
+
+          // 双击播放/暂停
           onDoubleTap: _handleDoubleTap,
-          onLongPressStart: (_) => _startFastPlayback(),
-          onLongPressEnd: (_) => _stopFastPlayback(),
+
+          // 长按3倍速
+          onLongPressStart: (_) {
+            _startFastPlayback();
+          },
+
+          onLongPressEnd: (_) {
+            _stopFastPlayback();
+          },
+
           onLongPressCancel: _stopFastPlayback,
+
           child: Stack(
             fit: StackFit.expand,
             children: [
+              // ==================================================
               // 视频画面
+              // ==================================================
+
               Obx(() {
                 if (controller.currentIndex.value != widget.index) {
                   return const SizedBox.shrink();
@@ -450,6 +544,7 @@ class _VideoPageState extends State<_VideoPage> {
 
                 final videoWidth = controller.player.width ?? 0;
                 final videoHeight = controller.player.height ?? 0;
+
                 final videoLandscape = videoWidth > videoHeight;
 
                 final video = Video(
@@ -460,19 +555,29 @@ class _VideoPageState extends State<_VideoPage> {
                       : BoxFit.cover,
                 );
 
+                // 竖屏视频
                 if (!videoLandscape) {
-                  return IgnorePointer(child: video);
+                  return IgnorePointer(
+                    child: video,
+                  );
                 }
 
+                // 横屏视频上移
                 return IgnorePointer(
                   child: Transform.translate(
-                    offset: Offset(0, -height * 0.08),
+                    offset: Offset(
+                      0,
+                      -height * 0.08,
+                    ),
                     child: video,
                   ),
                 );
               }),
 
-              // 原生弹幕层：复用 PiliPlus 的 PlDanmaku
+              // ==================================================
+              // 弹幕层
+              // ==================================================
+
               Obx(() {
                 if (controller.currentIndex.value != widget.index ||
                     !controller.ready.value ||
@@ -498,7 +603,10 @@ class _VideoPageState extends State<_VideoPage> {
                 );
               }),
 
+              // ==================================================
               // 渐变遮罩
+              // ==================================================
+
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -511,21 +619,30 @@ class _VideoPageState extends State<_VideoPage> {
                           Colors.transparent,
                           Colors.black.withValues(alpha: 0.65),
                         ],
-                        stops: const [0, 0.55, 1],
+                        stops: const [
+                          0,
+                          0.55,
+                          1,
+                        ],
                       ),
                     ),
                   ),
                 ),
               ),
 
-              // 顶部返回按钮
+              // ==================================================
+              // 返回按钮
+              // ==================================================
+
               Positioned(
                 top: 0,
                 left: 0,
                 child: SafeArea(
                   child: IconButton(
                     tooltip: '返回',
-                    onPressed: Get.back,
+                    onPressed: () {
+                      Get.back();
+                    },
                     icon: const Icon(
                       Icons.arrow_back_ios_new_rounded,
                       color: Colors.white,
@@ -535,24 +652,44 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
               ),
 
-              // 顶部右侧菜单按钮
+              // ==================================================
+              // 右上角播放设置按钮
+              // 独立点击区域，不使用外层 GestureDetector 的点击回调
+              // ==================================================
+
               Positioned(
                 top: 0,
                 right: 4,
                 child: SafeArea(
-                  child: IconButton(
-                    tooltip: '播放设置',
-                    onPressed: _showSettingsMenu,
-                    icon: const Icon(
-                      Icons.more_vert,
-                      color: Colors.white,
-                      size: 27,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(24),
+
+                      onTap: () {
+                        _showSettingsMenu();
+                      },
+
+                      child: const SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Center(
+                          child: Icon(
+                            Icons.more_vert,
+                            color: Colors.white,
+                            size: 27,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
 
+              // ==================================================
               // 作者和标题
+              // ==================================================
+
               Positioned(
                 left: 16,
                 right: 76,
@@ -572,7 +709,9 @@ class _VideoPageState extends State<_VideoPage> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+
                     const SizedBox(height: 8),
+
                     Text(
                       widget.title,
                       maxLines: compact ? 2 : 3,
@@ -586,13 +725,19 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
               ),
 
+              // ==================================================
               // 右侧操作按钮
+              // ==================================================
+
               Positioned(
                 right: 8,
-                bottom: landscape ? 66 : (compact ? 92 : 112),
+                bottom: landscape
+                    ? 66
+                    : (compact ? 92 : 112),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // 点赞
                     Obx(() {
                       final liked = controller.liked.value;
                       final loading = controller.liking.value;
@@ -606,28 +751,48 @@ class _VideoPageState extends State<_VideoPage> {
                         onTap: _toggleLike,
                       );
                     }),
-                    SizedBox(height: compact ? 10 : 17),
+
+                    SizedBox(
+                      height: compact ? 10 : 17,
+                    ),
+
+                    // 评论
                     _FeedIconButton(
                       icon: Icons.mode_comment_outlined,
-                      onTap: () => _showMessage(
-                        '评论面板尚未接入',
-                      ),
+                      onTap: () {
+                        _showMessage('评论面板尚未接入');
+                      },
                     ),
-                    SizedBox(height: compact ? 10 : 17),
+
+                    SizedBox(
+                      height: compact ? 10 : 17,
+                    ),
+
+                    // 投币
                     _FeedIconButton(
                       icon: Icons.monetization_on_outlined,
-                      onTap: () => _showMessage(
-                        '投币功能尚未接入',
-                      ),
+                      onTap: () {
+                        _showMessage('投币功能尚未接入');
+                      },
                     ),
-                    SizedBox(height: compact ? 10 : 17),
+
+                    SizedBox(
+                      height: compact ? 10 : 17,
+                    ),
+
+                    // 收藏
                     _FeedIconButton(
                       icon: Icons.star_border_rounded,
-                      onTap: () => _showMessage(
-                        '收藏功能尚未接入',
-                      ),
+                      onTap: () {
+                        _showMessage('收藏功能尚未接入');
+                      },
                     ),
-                    SizedBox(height: compact ? 10 : 17),
+
+                    SizedBox(
+                      height: compact ? 10 : 17,
+                    ),
+
+                    // 分享
                     _FeedIconButton(
                       icon: Icons.share_outlined,
                       onTap: _shareVideo,
@@ -636,7 +801,10 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
               ),
 
+              // ==================================================
               // 暂停提示
+              // ==================================================
+
               if (_showPaused)
                 Center(
                   child: Container(
@@ -653,7 +821,10 @@ class _VideoPageState extends State<_VideoPage> {
                   ),
                 ),
 
+              // ==================================================
               // 3倍速提示
+              // ==================================================
+
               if (_speedBoostActive)
                 Positioned(
                   top: height * 0.13,
@@ -681,7 +852,10 @@ class _VideoPageState extends State<_VideoPage> {
                   ),
                 ),
 
+              // ==================================================
               // 缓冲提示
+              // ==================================================
+
               Obx(() {
                 final buffering =
                     controller.player.isBuffering.value;
@@ -722,20 +896,26 @@ class _VideoPageState extends State<_VideoPage> {
                 );
               }),
 
+              // ==================================================
               // 进度条
+              // ==================================================
+
               Positioned(
                 left: 12,
                 right: 12,
                 bottom: progressBottom,
                 child: Obx(() {
                   final player = controller.player;
+
                   final duration = player.duration.value;
                   final progress = player.progress;
 
                   if (controller.currentIndex.value != widget.index ||
                       !controller.ready.value ||
                       duration <= 0) {
-                    return const SizedBox(height: 18);
+                    return const SizedBox(
+                      height: 18,
+                    );
                   }
 
                   final value =
@@ -750,7 +930,9 @@ class _VideoPageState extends State<_VideoPage> {
                           fontSize: 11,
                         ),
                       ),
+
                       const SizedBox(width: 8),
+
                       Expanded(
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
@@ -772,16 +954,21 @@ class _VideoPageState extends State<_VideoPage> {
                             min: 0,
                             max: duration.toDouble(),
                             value: value,
+
                             onChangeStart: _onSeekStart,
+
                             onChanged: (value) {
                               player.seekPosition.value =
                                   value.round();
                             },
+
                             onChangeEnd: _onSeekEnd,
                           ),
                         ),
                       ),
+
                       const SizedBox(width: 8),
+
                       Text(
                         _formatDuration(duration),
                         style: const TextStyle(
@@ -801,6 +988,10 @@ class _VideoPageState extends State<_VideoPage> {
   }
 }
 
+// ================================================================
+// 右侧图标按钮
+// ================================================================
+
 class _FeedIconButton extends StatelessWidget {
   const _FeedIconButton({
     required this.icon,
@@ -816,42 +1007,48 @@ class _FeedIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkResponse(
-      onTap: loading ? null : onTap,
-      radius: 28,
-      child: SizedBox(
-        width: 48,
-        height: 48,
-        child: Center(
-          child: loading
-              ? const SizedBox(
-                  width: 25,
-                  height: 25,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Icon(
-                  icon,
-                  color: active
-                      ? Colors.pinkAccent
-                      : Colors.white,
-                  size: 29,
-                  shadows: const [
-                    Shadow(
-                      color: Colors.black,
-                      blurRadius: 5,
+    return Material(
+      color: Colors.transparent,
+      child: InkResponse(
+        onTap: loading ? null : onTap,
+        radius: 28,
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: loading
+                ? const SizedBox(
+                    width: 25,
+                    height: 25,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
                     ),
-                  ],
-                ),
+                  )
+                : Icon(
+                    icon,
+                    color: active
+                        ? Colors.pinkAccent
+                        : Colors.white,
+                    size: 29,
+                    shadows: const [
+                      Shadow(
+                        color: Colors.black,
+                        blurRadius: 5,
+                      ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
   }
 }
 
+// ================================================================
 // 登录状态检查占位辅助类
+// ================================================================
+
 class AccountsLoginCheck {
   static bool isLoggedIn() {
     return false;
