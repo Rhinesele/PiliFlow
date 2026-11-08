@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:PiliPlus/pages/vertical_feed/controller.dart';
+import 'package:PiliPlus/pages/danmaku/view.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -467,6 +468,32 @@ class _VideoPageState extends State<_VideoPage> {
                   child: Transform.translate(
                     offset: Offset(0, -height * 0.08),
                     child: video,
+                  ),
+                );
+              }),
+
+              // 原生弹幕层：复用 PiliPlus 的 PlDanmaku
+              Obx(() {
+                if (controller.currentIndex.value != widget.index ||
+                    !controller.ready.value ||
+                    controller.videoController == null) {
+                  return const SizedBox.shrink();
+                }
+
+                final cid = controller.videos[widget.index].cid;
+
+                if (cid == null || cid <= 0) {
+                  return const SizedBox.shrink();
+                }
+
+                return IgnorePointer(
+                  child: PlDanmaku(
+                    cid: cid,
+                    playerController: controller.player,
+                    isPipMode: false,
+                    isFullScreen: true,
+                    isFileSource: false,
+                    size: Size(width, height),
                   ),
                 );
               }),
