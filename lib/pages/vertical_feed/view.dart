@@ -234,102 +234,146 @@ class _VideoPageState extends State<_VideoPage> {
   }
 
   void _showSettingsMenu() {
-    if (!mounted) return;
+    Get.bottomSheet(
+      SafeArea(
+        child: Obx(() {
+          final speed = controller.player.playbackSpeed;
+          final danmakuOn = controller.player.enableShowDanmaku.value;
+          final mode = controller.playMode.value;
 
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF202020),
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Obx(() {
-            return Column(
+          return Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(height: 12),
                 Container(
                   width: 36,
                   height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(
-                    color: Colors.white38,
+                    color: Colors.white30,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  '播放设置',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                  ),
+
+                // 倍速
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.fast_forward,
+                      color: Colors.white70,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '倍速',
+                      style: TextStyle(color: Colors.white, fontSize: 15),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) {
+                            final selected = (speed - s).abs() < 0.01;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(
+                                  s == 1.0 ? '1.0' : s.toString(),
+                                  style: TextStyle(
+                                    color: selected
+                                        ? Colors.white
+                                        : Colors.white70,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                selected: selected,
+                                selectedColor: Colors.pinkAccent,
+                                backgroundColor: Colors.white12,
+                                onSelected: (_) {
+                                  controller.player.setPlaybackSpeed(s);
+                                },
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+
                 const SizedBox(height: 8),
+                const Divider(color: Colors.white12),
+
+                // 自动连播
                 SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    '自动连播',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  subtitle: const Text(
+                    '播完自动下一个',
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                  value: mode == VerticalFeedPlayMode.autoNext,
+                  activeThumbColor: Colors.pinkAccent,
+                  onChanged: (v) {
+                    controller.setPlayMode(
+                      v
+                          ? VerticalFeedPlayMode.autoNext
+                          : VerticalFeedPlayMode.loopCurrent,
+                    );
+                  },
+                ),
+
+                // 循环当前
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    '循环当前视频',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  value: mode == VerticalFeedPlayMode.loopCurrent,
+                  activeThumbColor: Colors.pinkAccent,
+                  onChanged: (v) {
+                    controller.setPlayMode(
+                      v
+                          ? VerticalFeedPlayMode.loopCurrent
+                          : VerticalFeedPlayMode.autoNext,
+                    );
+                  },
+                ),
+
+                // 弹幕（复用 PiliPlus 已有开关）
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: const Text(
                     '显示弹幕',
                     style: TextStyle(color: Colors.white),
                   ),
                   secondary: const Icon(
                     Icons.subtitles_outlined,
-                    color: Colors.white,
+                    color: Colors.white70,
                   ),
-                  value: controller.player.enableShowDanmaku.value,
+                  value: danmakuOn,
                   activeThumbColor: Colors.pinkAccent,
-                  onChanged: (value) {
-                    controller.player.enableShowDanmaku.value = value;
+                  onChanged: (v) {
+                    controller.player.enableShowDanmaku.value = v;
                   },
                 ),
-                const Divider(color: Colors.white12),
-                _modeTile(
-                  sheetContext,
-                  '自动连播',
-                  VerticalFeedPlayMode.autoNext,
-                ),
-                _modeTile(
-                  sheetContext,
-                  '循环当前视频',
-                  VerticalFeedPlayMode.loopCurrent,
-                ),
-                _modeTile(
-                  sheetContext,
-                  '播完停止',
-                  VerticalFeedPlayMode.stop,
-                ),
-                const SizedBox(height: 12),
               ],
-            );
-          }),
-        );
-      },
-    );
-  }
-
-  Widget _modeTile(
-    BuildContext context,
-    String title,
-    VerticalFeedPlayMode mode,
-  ) {
-    final selected = controller.playMode.value == mode;
-
-    return ListTile(
-      title: Text(
-        title,
-        style: TextStyle(
-          color: selected ? Colors.pinkAccent : Colors.white,
-        ),
+            ),
+          );
+        }),
       ),
-      trailing: selected
-          ? const Icon(Icons.check, color: Colors.pinkAccent)
-          : null,
-      onTap: () {
-        controller.setPlayMode(mode);
-        Navigator.of(context).pop();
-      },
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
     );
   }
 
@@ -386,6 +430,7 @@ class _VideoPageState extends State<_VideoPage> {
         return Stack(
           fit: StackFit.expand,
           children: [
+            // 手势层（不包含右上角按钮）
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -397,6 +442,7 @@ class _VideoPageState extends State<_VideoPage> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
+                    // 视频
                     Obx(() {
                       if (controller.currentIndex.value != widget.index) {
                         return const SizedBox.shrink();
@@ -431,6 +477,7 @@ class _VideoPageState extends State<_VideoPage> {
                       );
                     }),
 
+                    // 弹幕
                     Obx(() {
                       if (controller.currentIndex.value != widget.index ||
                           !controller.ready.value ||
@@ -455,6 +502,7 @@ class _VideoPageState extends State<_VideoPage> {
                       );
                     }),
 
+                    // 渐变
                     Positioned.fill(
                       child: IgnorePointer(
                         child: DecoratedBox(
@@ -474,6 +522,7 @@ class _VideoPageState extends State<_VideoPage> {
                       ),
                     ),
 
+                    // 作者和标题
                     Positioned(
                       left: 16,
                       right: 76,
@@ -507,6 +556,7 @@ class _VideoPageState extends State<_VideoPage> {
                       ),
                     ),
 
+                    // 右侧按钮
                     Positioned(
                       right: 8,
                       bottom: landscape ? 66 : (compact ? 92 : 112),
@@ -618,6 +668,7 @@ class _VideoPageState extends State<_VideoPage> {
                       );
                     }),
 
+                    // 进度条
                     Positioned(
                       left: 12,
                       right: 12,
