@@ -1,7 +1,8 @@
 import 'dart:async';
 
-import 'package:PiliPlus/pages/vertical_feed/controller.dart';
 import 'package:PiliPlus/pages/danmaku/view.dart';
+import 'package:PiliPlus/pages/vertical_feed/controller.dart';
+import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -105,9 +106,7 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
               Text(
                 controller.error.value!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                ),
+                style: const TextStyle(color: Colors.white),
               ),
               const SizedBox(height: 12),
               FilledButton(
@@ -153,77 +152,39 @@ class _VideoPageState extends State<_VideoPage> {
 
   VerticalFeedController get controller => widget.controller;
 
-  // ============================================================
-  // 3倍速
-  // ============================================================
-
   Future<void> _startFastPlayback() async {
-    if (_speedBoostActive || !controller.ready.value) {
-      return;
-    }
-
-    if (!controller.player.playerStatus.isPlaying) {
-      return;
-    }
+    if (_speedBoostActive || !controller.ready.value) return;
+    if (!controller.player.playerStatus.isPlaying) return;
 
     _previousSpeed = controller.player.playbackSpeed;
     _speedBoostActive = true;
-
-    if (mounted) {
-      setState(() {});
-    }
-
+    if (mounted) setState(() {});
     await controller.player.setPlaybackSpeed(3.0);
   }
 
   Future<void> _stopFastPlayback() async {
-    if (!_speedBoostActive) {
-      return;
-    }
+    if (!_speedBoostActive) return;
 
     final speed = _previousSpeed ?? 1.0;
-
     _speedBoostActive = false;
     _previousSpeed = null;
-
-    if (mounted) {
-      setState(() {});
-    }
-
+    if (mounted) setState(() {});
     await controller.player.setPlaybackSpeed(speed);
   }
 
-  // ============================================================
-  // 视频点击
-  // ============================================================
-
-  // 单击视频不打开播放设置。
-  // 播放设置只由右上角按钮触发。
   void _handleTap() {}
 
   Future<void> _handleDoubleTap() async {
     final wasPlaying = controller.player.playerStatus.isPlaying;
-
     await controller.togglePlayPause();
-
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
     setState(() {
       _showPaused = wasPlaying;
     });
   }
 
-  // ============================================================
-  // 提示
-  // ============================================================
-
   void _showMessage(String message) {
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -235,25 +196,16 @@ class _VideoPageState extends State<_VideoPage> {
       );
   }
 
-  // ============================================================
-  // 点赞
-  // ============================================================
-
   Future<void> _toggleLike() async {
-    if (controller.liking.value) {
-      return;
-    }
+    if (controller.liking.value) return;
 
-    if (!AccountsLoginCheck.isLoggedIn()) {
+    if (!Accounts.video.isLogin) {
       _showMessage('请先登录哔哩哔哩账号');
       return;
     }
 
     final success = await controller.toggleLike();
-
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     _showMessage(
       success
@@ -262,20 +214,14 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
-  // ============================================================
-  // 分享
-  // ============================================================
-
   Future<void> _shareVideo() async {
-    if (widget.index < 0 ||
-        widget.index >= controller.videos.length) {
+    if (widget.index < 0 || widget.index >= controller.videos.length) {
       _showMessage('无法获取视频信息');
       return;
     }
 
     final item = controller.videos[widget.index];
     final bvid = item.bvid;
-
     if (bvid == null || bvid.isEmpty) {
       _showMessage('无法获取视频链接');
       return;
@@ -287,14 +233,8 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
-  // ============================================================
-  // 播放设置菜单
-  // ============================================================
-
   void _showSettingsMenu() {
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     showModalBottomSheet<void>(
       context: context,
@@ -302,9 +242,7 @@ class _VideoPageState extends State<_VideoPage> {
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(18),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       builder: (sheetContext) {
         return SafeArea(
@@ -313,7 +251,6 @@ class _VideoPageState extends State<_VideoPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 12),
-
                 Container(
                   width: 36,
                   height: 4,
@@ -322,9 +259,7 @@ class _VideoPageState extends State<_VideoPage> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-
                 const SizedBox(height: 16),
-
                 const Text(
                   '播放设置',
                   style: TextStyle(
@@ -333,16 +268,11 @@ class _VideoPageState extends State<_VideoPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 8),
-
-                // 弹幕开关
                 SwitchListTile(
                   title: const Text(
                     '显示弹幕',
-                    style: TextStyle(
-                      color: Colors.white,
-                    ),
+                    style: TextStyle(color: Colors.white),
                   ),
                   secondary: const Icon(
                     Icons.subtitles_outlined,
@@ -354,32 +284,22 @@ class _VideoPageState extends State<_VideoPage> {
                     controller.player.enableShowDanmaku.value = value;
                   },
                 ),
-
-                const Divider(
-                  color: Colors.white12,
-                ),
-
-                // 自动连播
+                const Divider(color: Colors.white12),
                 _modeTile(
                   sheetContext,
                   '自动连播',
                   VerticalFeedPlayMode.autoNext,
                 ),
-
-                // 循环当前视频
                 _modeTile(
                   sheetContext,
                   '循环当前视频',
                   VerticalFeedPlayMode.loopCurrent,
                 ),
-
-                // 播完停止
                 _modeTile(
                   sheetContext,
                   '播完停止',
                   VerticalFeedPlayMode.stop,
                 ),
-
                 const SizedBox(height: 12),
               ],
             );
@@ -404,10 +324,7 @@ class _VideoPageState extends State<_VideoPage> {
         ),
       ),
       trailing: selected
-          ? const Icon(
-              Icons.check,
-              color: Colors.pinkAccent,
-            )
+          ? const Icon(Icons.check, color: Colors.pinkAccent)
           : null,
       onTap: () {
         controller.setPlayMode(mode);
@@ -416,27 +333,16 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
-  // ============================================================
-  // 时间格式
-  // ============================================================
-
   String _formatDuration(int seconds) {
     final duration = Duration(seconds: seconds);
-
     return '${duration.inMinutes}:'
         '${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
   }
 
-  // ============================================================
-  // 进度条
-  // ============================================================
-
   void _onSeekStart(double value) {
     controller.player.isSeeking.value = true;
     controller.player.seekPosition.value = value.round();
-
     _bufferTimer?.cancel();
-
     if (mounted) {
       setState(() {
         _showBuffering = true;
@@ -446,45 +352,25 @@ class _VideoPageState extends State<_VideoPage> {
 
   void _onSeekEnd(double value) {
     controller.player.isSeeking.value = false;
-
-    controller.player.seekTo(
-      Duration(seconds: value.round()),
-    );
-
+    controller.player.seekTo(Duration(seconds: value.round()));
     _bufferTimer?.cancel();
-
-    _bufferTimer = Timer(
-      const Duration(milliseconds: 350),
-      () {
-        if (mounted && !controller.player.isBuffering.value) {
-          setState(() {
-            _showBuffering = false;
-          });
-        }
-      },
-    );
+    _bufferTimer = Timer(const Duration(milliseconds: 350), () {
+      if (mounted && !controller.player.isBuffering.value) {
+        setState(() {
+          _showBuffering = false;
+        });
+      }
+    });
   }
-
-  // ============================================================
-  // 生命周期
-  // ============================================================
 
   @override
   void dispose() {
     _bufferTimer?.cancel();
-
     if (_speedBoostActive) {
-      controller.player.setPlaybackSpeed(
-        _previousSpeed ?? 1.0,
-      );
+      controller.player.setPlaybackSpeed(_previousSpeed ?? 1.0);
     }
-
     super.dispose();
   }
-
-  // ============================================================
-  // 页面
-  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -492,505 +378,353 @@ class _VideoPageState extends State<_VideoPage> {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
-
         final landscape = width > height;
         final compact = height < 680 || landscape;
-
         final bottomInset = MediaQuery.paddingOf(context).bottom;
+        final progressBottom = bottomInset > 0 ? bottomInset + 8 : 24.0;
 
-        final progressBottom =
-            bottomInset > 0 ? bottomInset + 8 : 24.0;
-
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-
-          // 单击不打开菜单
-          onTap: _handleTap,
-
-          // 双击播放/暂停
-          onDoubleTap: _handleDoubleTap,
-
-          // 长按3倍速
-          onLongPressStart: (_) {
-            _startFastPlayback();
-          },
-
-          onLongPressEnd: (_) {
-            _stopFastPlayback();
-          },
-
-          onLongPressCancel: _stopFastPlayback,
-
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // ==================================================
-              // 视频画面
-              // ==================================================
-
-              Obx(() {
-                if (controller.currentIndex.value != widget.index) {
-                  return const SizedBox.shrink();
-                }
-
-                final videoController = controller.videoController;
-
-                if (!controller.ready.value ||
-                    videoController == null) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
-                }
-
-                final videoWidth = controller.player.width ?? 0;
-                final videoHeight = controller.player.height ?? 0;
-
-                final videoLandscape = videoWidth > videoHeight;
-
-                final video = Video(
-                  controller: videoController,
-                  controls: NoVideoControls,
-                  fit: videoLandscape
-                      ? BoxFit.contain
-                      : BoxFit.cover,
-                );
-
-                // 竖屏视频
-                if (!videoLandscape) {
-                  return IgnorePointer(
-                    child: video,
-                  );
-                }
-
-                // 横屏视频上移
-                return IgnorePointer(
-                  child: Transform.translate(
-                    offset: Offset(
-                      0,
-                      -height * 0.08,
-                    ),
-                    child: video,
-                  ),
-                );
-              }),
-
-              // ==================================================
-              // 弹幕层
-              // ==================================================
-
-              Obx(() {
-                if (controller.currentIndex.value != widget.index ||
-                    !controller.ready.value ||
-                    controller.videoController == null) {
-                  return const SizedBox.shrink();
-                }
-
-                final cid = controller.videos[widget.index].cid;
-
-                if (cid == null || cid <= 0) {
-                  return const SizedBox.shrink();
-                }
-
-                return IgnorePointer(
-                  child: PlDanmaku(
-                    cid: cid,
-                    playerController: controller.player,
-                    isPipMode: false,
-                    isFullScreen: true,
-                    isFileSource: false,
-                    size: Size(width, height),
-                  ),
-                );
-              }),
-
-              // ==================================================
-              // 渐变遮罩
-              // ==================================================
-
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.18),
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.65),
-                        ],
-                        stops: const [
-                          0,
-                          0.55,
-                          1,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // ==================================================
-              // 返回按钮
-              // ==================================================
-
-              Positioned(
-                top: 0,
-                left: 0,
-                child: SafeArea(
-                  child: IconButton(
-                    tooltip: '返回',
-                    onPressed: () {
-                      Get.back();
-                    },
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ),
-
-              // ==================================================
-              // 右上角播放设置按钮
-              // 独立点击区域，不使用外层 GestureDetector 的点击回调
-              // ==================================================
-
-              Positioned(
-                top: 0,
-                right: 4,
-                child: SafeArea(
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(24),
-
-                      onTap: () {
-                        _showSettingsMenu();
-                      },
-
-                      child: const SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: Center(
-                          child: Icon(
-                            Icons.more_vert,
-                            color: Colors.white,
-                            size: 27,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // ==================================================
-              // 作者和标题
-              // ==================================================
-
-              Positioned(
-                left: 16,
-                right: 76,
-                bottom: compact ? 66 : 76,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _handleTap,
+                onDoubleTap: _handleDoubleTap,
+                onLongPressStart: (_) => _startFastPlayback(),
+                onLongPressEnd: (_) => _stopFastPlayback(),
+                onLongPressCancel: _stopFastPlayback,
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    if (widget.owner.isNotEmpty)
-                      Text(
-                        '@${widget.owner}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: compact ? 14 : 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-
-                    const SizedBox(height: 8),
-
-                    Text(
-                      widget.title,
-                      maxLines: compact ? 2 : 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: compact ? 13 : 15,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ==================================================
-              // 右侧操作按钮
-              // ==================================================
-
-              Positioned(
-                right: 8,
-                bottom: landscape
-                    ? 66
-                    : (compact ? 92 : 112),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 点赞
                     Obx(() {
-                      final liked = controller.liked.value;
-                      final loading = controller.liking.value;
+                      if (controller.currentIndex.value != widget.index) {
+                        return const SizedBox.shrink();
+                      }
 
-                      return _FeedIconButton(
-                        icon: liked
-                            ? Icons.thumb_up_alt
-                            : Icons.thumb_up_alt_outlined,
-                        active: liked,
-                        loading: loading,
-                        onTap: _toggleLike,
+                      final videoController = controller.videoController;
+                      if (!controller.ready.value || videoController == null) {
+                        return const Center(
+                          child: CircularProgressIndicator(),
+                        );
+                      }
+
+                      final videoWidth = controller.player.width ?? 0;
+                      final videoHeight = controller.player.height ?? 0;
+                      final videoLandscape = videoWidth > videoHeight;
+
+                      final video = Video(
+                        controller: videoController,
+                        controls: NoVideoControls,
+                        fit: videoLandscape ? BoxFit.contain : BoxFit.cover,
+                      );
+
+                      if (!videoLandscape) {
+                        return IgnorePointer(child: video);
+                      }
+
+                      return IgnorePointer(
+                        child: Transform.translate(
+                          offset: Offset(0, -height * 0.08),
+                          child: video,
+                        ),
                       );
                     }),
 
-                    SizedBox(
-                      height: compact ? 10 : 17,
+                    Obx(() {
+                      if (controller.currentIndex.value != widget.index ||
+                          !controller.ready.value ||
+                          controller.videoController == null) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final cid = controller.videos[widget.index].cid;
+                      if (cid == null || cid <= 0) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return IgnorePointer(
+                        child: PlDanmaku(
+                          cid: cid,
+                          playerController: controller.player,
+                          isPipMode: false,
+                          isFullScreen: true,
+                          isFileSource: false,
+                          size: Size(width, height),
+                        ),
+                      );
+                    }),
+
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.18),
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.65),
+                              ],
+                              stops: const [0, 0.55, 1],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
 
-                    // 评论
-                    _FeedIconButton(
-                      icon: Icons.mode_comment_outlined,
-                      onTap: () {
-                        _showMessage('评论面板尚未接入');
-                      },
+                    Positioned(
+                      left: 16,
+                      right: 76,
+                      bottom: compact ? 66 : 76,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.owner.isNotEmpty)
+                            Text(
+                              '@${widget.owner}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: compact ? 14 : 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.title,
+                            maxLines: compact ? 2 : 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: compact ? 13 : 15,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
-                    SizedBox(
-                      height: compact ? 10 : 17,
+                    Positioned(
+                      right: 8,
+                      bottom: landscape ? 66 : (compact ? 92 : 112),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Obx(() {
+                            return _FeedIconButton(
+                              icon: controller.liked.value
+                                  ? Icons.thumb_up_alt
+                                  : Icons.thumb_up_alt_outlined,
+                              active: controller.liked.value,
+                              loading: controller.liking.value,
+                              onTap: _toggleLike,
+                            );
+                          }),
+                          SizedBox(height: compact ? 10 : 17),
+                          _FeedIconButton(
+                            icon: Icons.mode_comment_outlined,
+                            onTap: () => _showMessage('评论面板尚未接入'),
+                          ),
+                          SizedBox(height: compact ? 10 : 17),
+                          _FeedIconButton(
+                            icon: Icons.monetization_on_outlined,
+                            onTap: () => _showMessage('投币功能尚未接入'),
+                          ),
+                          SizedBox(height: compact ? 10 : 17),
+                          _FeedIconButton(
+                            icon: Icons.star_border_rounded,
+                            onTap: () => _showMessage('收藏功能尚未接入'),
+                          ),
+                          SizedBox(height: compact ? 10 : 17),
+                          _FeedIconButton(
+                            icon: Icons.share_outlined,
+                            onTap: _shareVideo,
+                          ),
+                        ],
+                      ),
                     ),
 
-                    // 投币
-                    _FeedIconButton(
-                      icon: Icons.monetization_on_outlined,
-                      onTap: () {
-                        _showMessage('投币功能尚未接入');
-                      },
-                    ),
+                    if (_showPaused)
+                      const Center(
+                        child: Icon(
+                          Icons.pause_circle_filled,
+                          color: Colors.white70,
+                          size: 72,
+                        ),
+                      ),
 
-                    SizedBox(
-                      height: compact ? 10 : 17,
-                    ),
+                    if (_speedBoostActive)
+                      Positioned(
+                        top: 80,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              '3倍速中',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
 
-                    // 收藏
-                    _FeedIconButton(
-                      icon: Icons.star_border_rounded,
-                      onTap: () {
-                        _showMessage('收藏功能尚未接入');
-                      },
-                    ),
+                    Obx(() {
+                      final buffering = controller.player.isBuffering.value;
 
-                    SizedBox(
-                      height: compact ? 10 : 17,
-                    ),
+                      if (buffering &&
+                          controller.ready.value &&
+                          !_showBuffering) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            setState(() => _showBuffering = true);
+                          }
+                        });
+                      } else if (!buffering && _showBuffering) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            setState(() => _showBuffering = false);
+                          }
+                        });
+                      }
 
-                    // 分享
-                    _FeedIconButton(
-                      icon: Icons.share_outlined,
-                      onTap: _shareVideo,
+                      if (!_showBuffering) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return const Center(
+                        child: Text(
+                          '加载中...',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      );
+                    }),
+
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: progressBottom,
+                      child: Obx(() {
+                        final player = controller.player;
+                        final duration = player.duration.value;
+                        final progress = player.progress;
+
+                        if (controller.currentIndex.value != widget.index ||
+                            !controller.ready.value ||
+                            duration <= 0) {
+                          return const SizedBox(height: 18);
+                        }
+
+                        return Row(
+                          children: [
+                            Text(
+                              _formatDuration(progress),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 2,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 6,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 12,
+                                  ),
+                                  activeTrackColor: Colors.pinkAccent,
+                                  inactiveTrackColor: Colors.white24,
+                                  thumbColor: Colors.white,
+                                ),
+                                child: Slider(
+                                  min: 0,
+                                  max: duration.toDouble(),
+                                  value:
+                                      progress.clamp(0, duration).toDouble(),
+                                  onChangeStart: _onSeekStart,
+                                  onChanged: (value) {
+                                    player.seekPosition.value = value.round();
+                                  },
+                                  onChangeEnd: _onSeekEnd,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _formatDuration(duration),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        );
+                      }),
                     ),
                   ],
                 ),
               ),
+            ),
 
-              // ==================================================
-              // 暂停提示
-              // ==================================================
-
-              if (_showPaused)
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.48),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.pause_rounded,
-                      color: Colors.white,
-                      size: 54,
-                    ),
+            // 顶栏在手势层外面，保证可点
+            Positioned(
+              top: 0,
+              left: 0,
+              child: SafeArea(
+                child: IconButton(
+                  tooltip: '返回',
+                  onPressed: Get.back,
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                    size: 24,
                   ),
                 ),
-
-              // ==================================================
-              // 3倍速提示
-              // ==================================================
-
-              if (_speedBoostActive)
-                Positioned(
-                  top: height * 0.13,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 13,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.62),
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      child: const Text(
-                        '3.0倍速中',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 19,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // ==================================================
-              // 缓冲提示
-              // ==================================================
-
-              Obx(() {
-                final buffering =
-                    controller.player.isBuffering.value;
-
-                if (buffering &&
-                    controller.ready.value &&
-                    !_showBuffering) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      setState(() {
-                        _showBuffering = true;
-                      });
-                    }
-                  });
-                } else if (!buffering && _showBuffering) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      setState(() {
-                        _showBuffering = false;
-                      });
-                    }
-                  });
-                }
-
-                if (!_showBuffering) {
-                  return const SizedBox.shrink();
-                }
-
-                return const Center(
-                  child: Text(
-                    '加载中...',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                );
-              }),
-
-              // ==================================================
-              // 进度条
-              // ==================================================
-
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: progressBottom,
-                child: Obx(() {
-                  final player = controller.player;
-
-                  final duration = player.duration.value;
-                  final progress = player.progress;
-
-                  if (controller.currentIndex.value != widget.index ||
-                      !controller.ready.value ||
-                      duration <= 0) {
-                    return const SizedBox(
-                      height: 18,
-                    );
-                  }
-
-                  final value =
-                      progress.clamp(0, duration).toDouble();
-
-                  return Row(
-                    children: [
-                      Text(
-                        _formatDuration(progress),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                        ),
-                      ),
-
-                      const SizedBox(width: 8),
-
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 2,
-                            thumbShape:
-                                const RoundSliderThumbShape(
-                              enabledThumbRadius: 5,
-                            ),
-                            overlayShape:
-                                const RoundSliderOverlayShape(
-                              overlayRadius: 12,
-                            ),
-                            activeTrackColor: Colors.white,
-                            inactiveTrackColor: Colors.white38,
-                            thumbColor: Colors.white,
-                            overlayColor: Colors.white24,
-                          ),
-                          child: Slider(
-                            min: 0,
-                            max: duration.toDouble(),
-                            value: value,
-
-                            onChangeStart: _onSeekStart,
-
-                            onChanged: (value) {
-                              player.seekPosition.value =
-                                  value.round();
-                            },
-
-                            onChangeEnd: _onSeekEnd,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(width: 8),
-
-                      Text(
-                        _formatDuration(duration),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  );
-                }),
               ),
-            ],
-          ),
+            ),
+
+            Positioned(
+              top: 0,
+              right: 4,
+              child: SafeArea(
+                child: IconButton(
+                  tooltip: '播放设置',
+                  onPressed: _showSettingsMenu,
+                  icon: const Icon(
+                    Icons.more_vert,
+                    color: Colors.white,
+                    size: 27,
+                  ),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 }
-
-// ================================================================
-// 右侧图标按钮
-// ================================================================
 
 class _FeedIconButton extends StatelessWidget {
   const _FeedIconButton({
@@ -1027,30 +761,15 @@ class _FeedIconButton extends StatelessWidget {
                   )
                 : Icon(
                     icon,
-                    color: active
-                        ? Colors.pinkAccent
-                        : Colors.white,
+                    color: active ? Colors.pinkAccent : Colors.white,
                     size: 29,
                     shadows: const [
-                      Shadow(
-                        color: Colors.black,
-                        blurRadius: 5,
-                      ),
+                      Shadow(color: Colors.black, blurRadius: 5),
                     ],
                   ),
           ),
         ),
       ),
     );
-  }
-}
-
-// ================================================================
-// 登录状态检查占位辅助类
-// ================================================================
-
-class AccountsLoginCheck {
-  static bool isLoggedIn() {
-    return false;
   }
 }
