@@ -40,6 +40,21 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
   final coining = false.obs;
   final faved = false.obs;
   final faving = false.obs;
+  final disliked = false.obs;
+
+  /// 面板打开时锁定竖滑
+  final panelOpen = false.obs;
+
+  /// 预取的播放地址缓存
+  final Map<
+      String,
+      ({
+        String videoUrl,
+        String? audioUrl,
+        int? timeLength,
+        int? width,
+        int? height,
+      })> _urlCache = {};
 
   final likeCount = 0.obs;
   final replyCount = 0.obs;
@@ -209,68 +224,99 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     unawaited(_loadRelation(bvid, token));
     unawaited(_loadIntro(bvid, token));
     unawaited(_loadOwnerInfo(item.owner?.mid, token));
+    unawaited(_prefetchAround(index));
 
     try {
       await player.pause(notify: false, isInterrupt: true);
 
-      final res = await VideoHttp.videoUrl(
-        avid: item.aid,
-        bvid: bvid,
-        cid: cid,
-        qn: Pref.defaultVideoQa,
-        tryLook: !Accounts.get(AccountType.video).isLogin && Pref.p1080,
-        videoType: VideoType.ugc,
-      );
+      String? videoUrl;
+      String? audioUrl;
+      int? timeLength;
+      int? vw;
+      int? vh;
 
-      if (_disposed || token != _loadToken) return;
-
-      if (res case Success(:final response)) {
-        final dash = response.dash;
-        final video =
-            dash?.video?.isNotEmpty == true ? dash!.video!.first : null;
-        final audio =
-            dash?.audio?.isNotEmpty == true ? dash!.audio!.first : null;
-
-        if (video == null) {
-          error.value = '该视频没有可用的视频流';
-          return;
-        }
-
-        final videoUrl = VideoUtils.getCdnUrl(video.playUrls);
-        final audioUrl = audio == null
-            ? null
-            : VideoUtils.getCdnUrl(audio.playUrls, isAudio: true);
-
-        if (videoUrl == null || videoUrl.isEmpty) {
-          error.value = '视频地址获取失败';
-          return;
-        }
-
-        await player.setDataSource(
-          NetworkSource(videoSource: videoUrl, audioSource: audioUrl),
-          duration: response.timeLength == null
-              ? null
-              : Duration(milliseconds: response.timeLength!),
-          isVertical: true,
-          aid: item.aid,
+      final cached = _urlCache[bvid];
+      if (cached != null) {
+        videoUrl = cached.videoUrl;
+        audioUrl = cached.audioUrl;
+        timeLength = cached.timeLength;
+        vw = cached.width;
+        vh = cached.height;
+      } else {
+        final res = await VideoHttp.videoUrl(
+          avid: item.aid,
           bvid: bvid,
           cid: cid,
-          autoplay: true,
+          qn: Pref.defaultVideoQa,
+          tryLook: !Accounts.get(AccountType.video).isLogin && Pref.p1080,
           videoType: VideoType.ugc,
-          width: video.width,
-          height: video.height,
         );
 
         if (_disposed || token != _loadToken) return;
 
-        ready.value = true;
-        if (muted.value) {
-          await player.setVolume(0, showIndicator: false);
+        if (res case Success(:final response)) {
+          final dash = response.dash;
+          final video =
+              dash?.video?.isNotEmpty == true ? dash!.video!.first : null;
+          final audio =
+              dash?.audio?.isNotEmpty == true ? dash!.audio!.first : null;
+
+          if (video == null) {
+            error.value = '该视频没有可用的视频流';
+            return;
+          }
+
+          videoUrl = VideoUtils.getCdnUrl(video.playUrls);
+          audioUrl = audio == null
+              ? null
+              : VideoUtils.getCdnUrl(audio.playUrls, isAudio: true);
+          timeLength = response.timeLength;
+          vw = video.width;
+          vh = video.height;
+          if (videoUrl != null && videoUrl.isNotEmpty) {
+            _urlCache[bvid] = (
+              videoUrl: videoUrl,
+              audioUrl: audioUrl,
+              timeLength: timeLength,
+              width: vw,
+              height: vh,
+            );
+          }
+        } else if (res case Error(:final errMsg)) {
+          error.value = errMsg;
+          return;
         }
-        await player.play();
-      } else if (res case Error(:final errMsg)) {
-        error.value = errMsg;
       }
+
+      if (_disposed || token != _loadToken) return;
+
+      if (videoUrl == null || videoUrl.isEmpty) {
+        error.value = '视频地址获取失败';
+        return;
+      }
+
+      await player.setDataSource(
+        NetworkSource(videoSource: videoUrl, audioSource: audioUrl),
+        duration: timeLength == null
+            ? null
+            : Duration(milliseconds: timeLength),
+        isVertical: true,
+        aid: item.aid,
+        bvid: bvid,
+        cid: cid,
+        autoplay: true,
+        videoType: VideoType.ugc,
+        width: vw,
+        height: vh,
+      );
+
+      if (_disposed || token != _loadToken) return;
+
+      ready.value = true;
+      if (muted.value) {
+        await player.setVolume(0, showIndicator: false);
+      }
+      await player.play();
     } catch (e) {
       if (!_disposed && token == _loadToken) {
         error.value = e.toString();
@@ -286,12 +332,14 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
         final like = response.like ?? false;
         final coin = (response.coin ?? 0) > 0;
         final fav = response.favorite ?? false;
+        final dislike = response.dislike ?? false;
         _likeCache[bvid] = like;
         _coinCache[bvid] = coin;
         _favCache[bvid] = fav;
         liked.value = like;
         coined.value = coin;
         faved.value = fav;
+        disliked.value = dislike;
       }
     } catch (_) {}
   }
@@ -344,6 +392,80 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
         ownerFace.value = face;
         ownerFans.value = fans;
         if (name.isNotEmpty) ownerName.value = name;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> toggleDislike() async {
+    if (!isLogin) {
+      SmartDialog.showToast('请先登录');
+      return;
+    }
+    final bvid = currentItem?.bvid;
+    if (bvid == null || bvid.isEmpty) return;
+    try {
+      final newVal = !disliked.value;
+      final res = await VideoHttp.dislikeVideo(bvid: bvid, type: newVal);
+      if (_disposed) return;
+      if (res case Success()) {
+        disliked.value = newVal;
+        if (newVal && liked.value) {
+          liked.value = false;
+          _likeCache[bvid] = false;
+          if (likeCount.value > 0) likeCount.value -= 1;
+        }
+        SmartDialog.showToast(newVal ? '点踩成功' : '取消点踩');
+      } else if (res case Error(:final errMsg)) {
+        SmartDialog.showToast(errMsg ?? '操作失败');
+      }
+    } catch (e) {
+      SmartDialog.showToast(e.toString());
+    }
+  }
+
+  Future<void> _prefetchAround(int index) async {
+    final targets = <int>{
+      for (final i in [index - 1, index + 1, index + 2, index + 3])
+        if (i >= 0 && i < videos.length) i,
+    };
+    for (final i in targets) {
+      unawaited(_prefetchItem(videos[i]));
+    }
+  }
+
+  Future<void> _prefetchItem(RcmdVideoItemAppModel item) async {
+    final bvid = item.bvid;
+    final cid = item.cid;
+    if (bvid == null || cid == null) return;
+    if (_urlCache.containsKey(bvid)) return;
+    try {
+      final res = await VideoHttp.videoUrl(
+        avid: item.aid,
+        bvid: bvid,
+        cid: cid,
+        qn: Pref.defaultVideoQa,
+        tryLook: !Accounts.get(AccountType.video).isLogin && Pref.p1080,
+        videoType: VideoType.ugc,
+      );
+      if (res case Success(:final response)) {
+        final dash = response.dash;
+        final video =
+            dash?.video?.isNotEmpty == true ? dash!.video!.first : null;
+        final audio =
+            dash?.audio?.isNotEmpty == true ? dash!.audio!.first : null;
+        if (video == null) return;
+        final videoUrl = VideoUtils.getCdnUrl(video.playUrls);
+        if (videoUrl == null || videoUrl.isEmpty) return;
+        final audioUrl = audio == null
+            ? null
+            : VideoUtils.getCdnUrl(audio.playUrls, isAudio: true);
+        _urlCache[bvid] = (
+          videoUrl: videoUrl,
+          audioUrl: audioUrl,
+          timeLength: response.timeLength,
+          width: video.width,
+          height: video.height,
+        );
       }
     } catch (_) {}
   }
