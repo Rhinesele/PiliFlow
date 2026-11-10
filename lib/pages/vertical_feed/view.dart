@@ -140,9 +140,11 @@ class _VideoPageState extends State<_VideoPage> {
   bool _showBuffering = false;
   Timer? _bufferTimer;
 
-  VerticalFeedController get controller => widget.controller;
+  // 0=无 1=设置 2=投币 3=评论
+  int _panel = 0;
+  bool _coinAlsoLike = true;
 
-  BuildContext get _sheetContext => Get.overlayContext ?? context;
+  VerticalFeedController get controller => widget.controller;
 
   Future<void> _startFastPlayback() async {
     if (_speedBoostActive || !controller.ready.value) return;
@@ -181,28 +183,45 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
-  void _showSettingsMenu() {
-    showModalBottomSheet<void>(
-      context: _sheetContext,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF2A2A2A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Obx(() {
-            final speed = controller.player.playbackSpeed;
-            final danmakuOn = controller.player.enableShowDanmaku.value;
-            final mode = controller.playMode.value;
+  void _showSettingsMenu() => setState(() => _panel = 1);
 
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
+  void _showCoinSheet() {
+    setState(() {
+      _coinAlsoLike = true;
+      _panel = 2;
+    });
+  }
+
+  void _showComments() {
+    if (controller.currentItem?.aid == null) {
+      SmartDialog.showToast('无法获取视频信息');
+      return;
+    }
+    setState(() => _panel = 3);
+  }
+
+  void _closePanel() {
+    if (_panel != 0) setState(() => _panel = 0);
+  }
+
+  Widget _buildSettingsPanel() {
+    return Material(
+      color: const Color(0xFF2A2A2A),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      child: SafeArea(
+        top: false,
+        child: Obx(() {
+          final speed = controller.player.playbackSpeed;
+          final danmakuOn = controller.player.enableShowDanmaku.value;
+          final mode = controller.playMode.value;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: _closePanel,
+                  child: Container(
                     width: 36,
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 14),
@@ -211,209 +230,176 @@ class _VideoPageState extends State<_VideoPage> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
-                  const Text(
-                    '播放设置',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
+                ),
+                const Text(
+                  '播放设置',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Text('倍速', style: TextStyle(color: Colors.white)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) {
-                              final selected = (speed - s).abs() < 0.01;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    s == 1.0 ? '1.0' : s.toString(),
-                                    style: TextStyle(
-                                      color: selected
-                                          ? Colors.white
-                                          : Colors.white70,
-                                    ),
-                                  ),
-                                  selected: selected,
-                                  selectedColor: Colors.pinkAccent,
-                                  backgroundColor: Colors.white12,
-                                  onSelected: (_) {
-                                    controller.player.setPlaybackSpeed(s);
-                                  },
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      '自动连播',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    value: mode == VerticalFeedPlayMode.autoNext,
-                    activeThumbColor: Colors.pinkAccent,
-                    onChanged: (v) {
-                      controller.setPlayMode(
-                        v
-                            ? VerticalFeedPlayMode.autoNext
-                            : VerticalFeedPlayMode.loopCurrent,
-                      );
-                    },
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      '循环当前',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    value: mode == VerticalFeedPlayMode.loopCurrent,
-                    activeThumbColor: Colors.pinkAccent,
-                    onChanged: (v) {
-                      controller.setPlayMode(
-                        v
-                            ? VerticalFeedPlayMode.loopCurrent
-                            : VerticalFeedPlayMode.autoNext,
-                      );
-                    },
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text(
-                      '显示弹幕',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    value: danmakuOn,
-                    activeThumbColor: Colors.pinkAccent,
-                    onChanged: (v) {
-                      controller.player.enableShowDanmaku.value = v;
-                    },
-                  ),
-                ],
-              ),
-            );
-          }),
-        );
-      },
-    );
-  }
-
-  void _showCoinSheet() {
-    var alsoLike = true;
-    showModalBottomSheet<void>(
-      context: _sheetContext,
-      useRootNavigator: true,
-      backgroundColor: const Color(0xFF2A2A2A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: StatefulBuilder(
-            builder: (context, setModalState) {
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                ),
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white30,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    const Text(
-                      '投币',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _CoinChoice(
-                            label: '1 硬币',
-                            onTap: () {
-                              Navigator.pop(ctx);
-                              controller.coin(1, alsoLike: alsoLike);
-                            },
-                          ),
+                    const Text('倍速', style: TextStyle(color: Colors.white)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) {
+                            final selected = (speed - s).abs() < 0.01;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(
+                                  s == 1.0 ? '1.0' : s.toString(),
+                                  style: TextStyle(
+                                    color: selected
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
+                                ),
+                                selected: selected,
+                                selectedColor: Colors.pinkAccent,
+                                backgroundColor: Colors.white12,
+                                onSelected: (_) {
+                                  controller.player.setPlaybackSpeed(s);
+                                },
+                              ),
+                            );
+                          }).toList(),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _CoinChoice(
-                            label: '2 硬币',
-                            onTap: () {
-                              Navigator.pop(ctx);
-                              controller.coin(2, alsoLike: alsoLike);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: alsoLike,
-                      activeColor: Colors.pinkAccent,
-                      title: const Text(
-                        '同时点赞',
-                        style: TextStyle(color: Colors.white),
                       ),
-                      onChanged: (v) {
-                        setModalState(() => alsoLike = v ?? true);
-                      },
                     ),
                   ],
                 ),
-              );
-            },
-          ),
-        );
-      },
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    '自动连播',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  value: mode == VerticalFeedPlayMode.autoNext,
+                  activeThumbColor: Colors.pinkAccent,
+                  onChanged: (v) {
+                    controller.setPlayMode(
+                      v
+                          ? VerticalFeedPlayMode.autoNext
+                          : VerticalFeedPlayMode.loopCurrent,
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    '循环当前',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  value: mode == VerticalFeedPlayMode.loopCurrent,
+                  activeThumbColor: Colors.pinkAccent,
+                  onChanged: (v) {
+                    controller.setPlayMode(
+                      v
+                          ? VerticalFeedPlayMode.loopCurrent
+                          : VerticalFeedPlayMode.autoNext,
+                    );
+                  },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    '显示弹幕',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  value: danmakuOn,
+                  activeThumbColor: Colors.pinkAccent,
+                  onChanged: (v) {
+                    controller.player.enableShowDanmaku.value = v;
+                  },
+                ),
+              ],
+            ),
+          );
+        }),
+      ),
     );
   }
 
-  void _showComments() {
-    final item = controller.currentItem;
-    final aid = item?.aid;
-    if (aid == null) {
-      SmartDialog.showToast('无法获取视频信息');
-      return;
-    }
-
-    final height = MediaQuery.sizeOf(_sheetContext).height * 0.7;
-
-    showModalBottomSheet<void>(
-      context: _sheetContext,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return SizedBox(
-          height: height,
-          child: _CommentSheet(
-            aid: aid,
-            scrollController: ScrollController(),
+  Widget _buildCoinPanel() {
+    return Material(
+      color: const Color(0xFF2A2A2A),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: _closePanel,
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white30,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const Text(
+                '投币',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _CoinChoice(
+                      label: '1 硬币',
+                      onTap: () {
+                        final also = _coinAlsoLike;
+                        _closePanel();
+                        controller.coin(1, alsoLike: also);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _CoinChoice(
+                      label: '2 硬币',
+                      onTap: () {
+                        final also = _coinAlsoLike;
+                        _closePanel();
+                        controller.coin(2, alsoLike: also);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _coinAlsoLike,
+                activeColor: Colors.pinkAccent,
+                title: const Text(
+                  '同时点赞',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onChanged: (v) {
+                  setState(() => _coinAlsoLike = v ?? true);
+                },
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -821,6 +807,40 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
               ),
             ),
+            if (_panel != 0)
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: _closePanel,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(color: Colors.black54),
+                ),
+              ),
+            if (_panel == 1)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildSettingsPanel(),
+              ),
+            if (_panel == 2)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildCoinPanel(),
+              ),
+            if (_panel == 3)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                top: MediaQuery.sizeOf(context).height * 0.3,
+                child: _CommentSheet(
+                  aid: controller.currentItem!.aid!,
+                  scrollController: ScrollController(),
+                  onClose: _closePanel,
+                ),
+              ),
             Positioned(
               top: 0,
               left: 0,
@@ -901,10 +921,12 @@ class _CommentSheet extends StatefulWidget {
   const _CommentSheet({
     required this.aid,
     required this.scrollController,
+    this.onClose,
   });
 
   final int aid;
   final ScrollController scrollController;
+  final VoidCallback? onClose;
 
   @override
   State<_CommentSheet> createState() => _CommentSheetState();
@@ -975,15 +997,27 @@ class _CommentSheetState extends State<_CommentSheet> {
               borderRadius: BorderRadius.circular(4),
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              '评论',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            child: Row(
+              children: [
+                const SizedBox(width: 40),
+                const Expanded(
+                  child: Text(
+                    '评论',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: widget.onClose,
+                  icon: const Icon(Icons.close, color: Colors.white70),
+                ),
+              ],
             ),
           ),
           const Divider(height: 1, color: Colors.white12),
@@ -1016,9 +1050,6 @@ class _CommentSheetState extends State<_CommentSheet> {
                             );
                           }
                           final r = _replies[index];
-                          final name = r.member.name;
-                          final msg = r.content.message;
-                          final face = r.member.face;
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 16),
                             child: Row(
@@ -1026,7 +1057,7 @@ class _CommentSheetState extends State<_CommentSheet> {
                               children: [
                                 ClipOval(
                                   child: NetworkImgLayer(
-                                    src: face,
+                                    src: r.member.face,
                                     width: 34,
                                     height: 34,
                                     type: ImageType.avatar,
@@ -1039,7 +1070,7 @@ class _CommentSheetState extends State<_CommentSheet> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        name,
+                                        r.member.name,
                                         style: const TextStyle(
                                           color: Colors.white70,
                                           fontSize: 13,
@@ -1047,7 +1078,7 @@ class _CommentSheetState extends State<_CommentSheet> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        msg,
+                                        r.content.message,
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 14,
