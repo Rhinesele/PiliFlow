@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/pages/danmaku/view.dart';
 import 'package:PiliPlus/pages/vertical_feed/controller.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -28,7 +30,6 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
   @override
   void initState() {
     super.initState();
-
     controller.onCompleted = (index) {
       if (pageController.hasClients) {
         pageController.animateToPage(
@@ -44,45 +45,38 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
   void dispose() {
     controller.onCompleted = null;
     pageController.dispose();
-
     if (Get.isRegistered<VerticalFeedController>()) {
       Get.delete<VerticalFeedController>();
     }
-
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Obx(() {
         if (controller.videos.isEmpty) {
           return _loadingOrError();
         }
-
         return PageView.builder(
           controller: pageController,
           scrollDirection: Axis.vertical,
           itemCount: controller.videos.length,
           onPageChanged: (index) {
             controller.playIndex(index);
-
             if (index >= controller.videos.length - 3) {
               controller.loadMore();
             }
           },
           itemBuilder: (context, index) {
             final item = controller.videos[index];
-
             return _VideoPage(
               key: ValueKey(item.bvid ?? item.aid),
               controller: controller,
               index: index,
               title: item.title ?? '',
-              owner: item.owner?.name ?? '',
             );
           },
         );
@@ -97,11 +91,7 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                color: Colors.white,
-                size: 42,
-              ),
+              const Icon(Icons.error_outline, color: Colors.white, size: 42),
               const SizedBox(height: 12),
               Text(
                 controller.error.value!,
@@ -116,7 +106,6 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
             ],
           );
         }
-
         return const CircularProgressIndicator();
       }),
     );
@@ -129,13 +118,11 @@ class _VideoPage extends StatefulWidget {
     required this.controller,
     required this.index,
     required this.title,
-    required this.owner,
   });
 
   final VerticalFeedController controller;
   final int index;
   final String title;
-  final String owner;
 
   @override
   State<_VideoPage> createState() => _VideoPageState();
@@ -143,11 +130,9 @@ class _VideoPage extends StatefulWidget {
 
 class _VideoPageState extends State<_VideoPage> {
   double? _previousSpeed;
-
   bool _speedBoostActive = false;
   bool _showPaused = false;
   bool _showBuffering = false;
-
   Timer? _bufferTimer;
 
   VerticalFeedController get controller => widget.controller;
@@ -155,7 +140,6 @@ class _VideoPageState extends State<_VideoPage> {
   Future<void> _startFastPlayback() async {
     if (_speedBoostActive || !controller.ready.value) return;
     if (!controller.player.playerStatus.isPlaying) return;
-
     _previousSpeed = controller.player.playbackSpeed;
     _speedBoostActive = true;
     if (mounted) setState(() {});
@@ -164,7 +148,6 @@ class _VideoPageState extends State<_VideoPage> {
 
   Future<void> _stopFastPlayback() async {
     if (!_speedBoostActive) return;
-
     final speed = _previousSpeed ?? 1.0;
     _speedBoostActive = false;
     _previousSpeed = null;
@@ -172,15 +155,11 @@ class _VideoPageState extends State<_VideoPage> {
     await controller.player.setPlaybackSpeed(speed);
   }
 
-  void _handleTap() {}
-
   Future<void> _handleDoubleTap() async {
     final wasPlaying = controller.player.playerStatus.isPlaying;
     await controller.togglePlayPause();
     if (!mounted) return;
-    setState(() {
-      _showPaused = wasPlaying;
-    });
+    setState(() => _showPaused = wasPlaying);
   }
 
   void _showMessage(String message) {
@@ -198,15 +177,12 @@ class _VideoPageState extends State<_VideoPage> {
 
   Future<void> _toggleLike() async {
     if (controller.liking.value) return;
-
     if (!Accounts.video.isLogin) {
       _showMessage('请先登录哔哩哔哩账号');
       return;
     }
-
     final success = await controller.toggleLike();
     if (!mounted) return;
-
     _showMessage(
       success
           ? (controller.liked.value ? '点赞成功' : '已取消点赞')
@@ -214,22 +190,38 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
+  Future<void> _coin() async {
+    if (controller.coining.value) return;
+    if (!Accounts.video.isLogin) {
+      _showMessage('请先登录哔哩哔哩账号');
+      return;
+    }
+    if (controller.coined.value) {
+      _showMessage('已经投过币了');
+      return;
+    }
+    final success = await controller.coinOne();
+    if (!mounted) return;
+    _showMessage(success ? '投币成功' : '投币失败');
+  }
+
+  Future<void> _openComments() async {
+    await controller.openComments();
+  }
+
   Future<void> _shareVideo() async {
     if (widget.index < 0 || widget.index >= controller.videos.length) {
       _showMessage('无法获取视频信息');
       return;
     }
-
     final item = controller.videos[widget.index];
     final bvid = item.bvid;
     if (bvid == null || bvid.isEmpty) {
       _showMessage('无法获取视频链接');
       return;
     }
-
     await ShareUtils.shareText(
-      '${item.title ?? '哔哩哔哩视频'}\n'
-      'https://www.bilibili.com/video/$bvid',
+      '${item.title ?? '哔哩哔哩视频'}\nhttps://www.bilibili.com/video/$bvid',
     );
   }
 
@@ -377,15 +369,19 @@ class _VideoPageState extends State<_VideoPage> {
         '${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
   }
 
+  String _formatFans(int n) {
+    if (n >= 10000) {
+      final v = n / 10000;
+      return '${v.toStringAsFixed(v >= 10 ? 0 : 1)}万粉丝';
+    }
+    return '$n粉丝';
+  }
+
   void _onSeekStart(double value) {
     controller.player.isSeeking.value = true;
     controller.player.seekPosition.value = value.round();
     _bufferTimer?.cancel();
-    if (mounted) {
-      setState(() {
-        _showBuffering = true;
-      });
-    }
+    if (mounted) setState(() => _showBuffering = true);
   }
 
   void _onSeekEnd(double value) {
@@ -394,9 +390,7 @@ class _VideoPageState extends State<_VideoPage> {
     _bufferTimer?.cancel();
     _bufferTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted && !controller.player.isBuffering.value) {
-        setState(() {
-          _showBuffering = false;
-        });
+        setState(() => _showBuffering = false);
       }
     });
   }
@@ -427,7 +421,6 @@ class _VideoPageState extends State<_VideoPage> {
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _handleTap,
                 onDoubleTap: _handleDoubleTap,
                 onLongPressStart: (_) => _startFastPlayback(),
                 onLongPressEnd: (_) => _stopFastPlayback(),
@@ -439,28 +432,23 @@ class _VideoPageState extends State<_VideoPage> {
                       if (controller.currentIndex.value != widget.index) {
                         return const SizedBox.shrink();
                       }
-
                       final videoController = controller.videoController;
                       if (!controller.ready.value || videoController == null) {
                         return const Center(
                           child: CircularProgressIndicator(),
                         );
                       }
-
                       final videoWidth = controller.player.width ?? 0;
                       final videoHeight = controller.player.height ?? 0;
                       final videoLandscape = videoWidth > videoHeight;
-
                       final video = Video(
                         controller: videoController,
                         controls: NoVideoControls,
                         fit: videoLandscape ? BoxFit.contain : BoxFit.cover,
                       );
-
                       if (!videoLandscape) {
                         return IgnorePointer(child: video);
                       }
-
                       return IgnorePointer(
                         child: Transform.translate(
                           offset: Offset(0, -height * 0.08),
@@ -475,12 +463,10 @@ class _VideoPageState extends State<_VideoPage> {
                           controller.videoController == null) {
                         return const SizedBox.shrink();
                       }
-
                       final cid = controller.videos[widget.index].cid;
                       if (cid == null || cid <= 0) {
                         return const SizedBox.shrink();
                       }
-
                       return IgnorePointer(
                         child: PlDanmaku(
                           cid: cid,
@@ -512,39 +498,86 @@ class _VideoPageState extends State<_VideoPage> {
                       ),
                     ),
 
+                    // 作者：头像 + 昵称 + 粉丝
                     Positioned(
                       left: 16,
                       right: 76,
                       bottom: compact ? 66 : 76,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (widget.owner.isNotEmpty)
+                      child: Obx(() {
+                        final face = controller.ownerFace.value;
+                        final name = controller.ownerName.value;
+                        final fans = controller.ownerFans.value;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                ClipOval(
+                                  child: face.isNotEmpty
+                                      ? NetworkImgLayer(
+                                          src: face,
+                                          width: 36,
+                                          height: 36,
+                                          type: ImageType.avatar,
+                                        )
+                                      : Container(
+                                          width: 36,
+                                          height: 36,
+                                          color: Colors.white24,
+                                          child: const Icon(
+                                            Icons.person,
+                                            color: Colors.white70,
+                                            size: 22,
+                                          ),
+                                        ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        name.isEmpty ? '@UP主' : '@$name',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: compact ? 14 : 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      if (fans > 0)
+                                        Text(
+                                          _formatFans(fans),
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
                             Text(
-                              '@${widget.owner}',
-                              maxLines: 1,
+                              widget.title,
+                              maxLines: compact ? 2 : 3,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: Colors.white,
-                                fontSize: compact ? 14 : 16,
-                                fontWeight: FontWeight.w600,
+                                fontSize: compact ? 13 : 15,
                               ),
                             ),
-                          const SizedBox(height: 8),
-                          Text(
-                            widget.title,
-                            maxLines: compact ? 2 : 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: compact ? 13 : 15,
-                            ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        );
+                      }),
                     ),
 
+                    // 右侧按钮
                     Positioned(
                       right: 8,
                       bottom: landscape ? 66 : (compact ? 92 : 112),
@@ -564,17 +597,23 @@ class _VideoPageState extends State<_VideoPage> {
                           SizedBox(height: compact ? 10 : 17),
                           _FeedIconButton(
                             icon: Icons.mode_comment_outlined,
-                            onTap: () => _showMessage('评论面板尚未接入'),
+                            onTap: _openComments,
                           ),
                           SizedBox(height: compact ? 10 : 17),
-                          _FeedIconButton(
-                            icon: Icons.monetization_on_outlined,
-                            onTap: () => _showMessage('投币功能尚未接入'),
-                          ),
+                          Obx(() {
+                            return _FeedIconButton(
+                              icon: controller.coined.value
+                                  ? Icons.monetization_on
+                                  : Icons.monetization_on_outlined,
+                              active: controller.coined.value,
+                              loading: controller.coining.value,
+                              onTap: _coin,
+                            );
+                          }),
                           SizedBox(height: compact ? 10 : 17),
                           _FeedIconButton(
                             icon: Icons.star_border_rounded,
-                            onTap: () => _showMessage('收藏功能尚未接入'),
+                            onTap: () => _showMessage('收藏请到视频页操作'),
                           ),
                           SizedBox(height: compact ? 10 : 17),
                           _FeedIconButton(
@@ -623,7 +662,6 @@ class _VideoPageState extends State<_VideoPage> {
 
                     Obx(() {
                       final buffering = controller.player.isBuffering.value;
-
                       if (buffering &&
                           controller.ready.value &&
                           !_showBuffering) {
@@ -639,11 +677,9 @@ class _VideoPageState extends State<_VideoPage> {
                           }
                         });
                       }
-
                       if (!_showBuffering) {
                         return const SizedBox.shrink();
                       }
-
                       return const Center(
                         child: Text(
                           '加载中...',
@@ -664,13 +700,11 @@ class _VideoPageState extends State<_VideoPage> {
                         final player = controller.player;
                         final duration = player.duration.value;
                         final progress = player.progress;
-
                         if (controller.currentIndex.value != widget.index ||
                             !controller.ready.value ||
                             duration <= 0) {
                           return const SizedBox(height: 18);
                         }
-
                         return Row(
                           children: [
                             Text(
@@ -688,7 +722,8 @@ class _VideoPageState extends State<_VideoPage> {
                                   thumbShape: const RoundSliderThumbShape(
                                     enabledThumbRadius: 6,
                                   ),
-                                  overlayShape: const RoundSliderOverlayShape(
+                                  overlayShape:
+                                      const RoundSliderOverlayShape(
                                     overlayRadius: 12,
                                   ),
                                   activeTrackColor: Colors.pinkAccent,
@@ -698,11 +733,13 @@ class _VideoPageState extends State<_VideoPage> {
                                 child: Slider(
                                   min: 0,
                                   max: duration.toDouble(),
-                                  value:
-                                      progress.clamp(0, duration).toDouble(),
+                                  value: progress
+                                      .clamp(0, duration)
+                                      .toDouble(),
                                   onChangeStart: _onSeekStart,
                                   onChanged: (value) {
-                                    player.seekPosition.value = value.round();
+                                    player.seekPosition.value =
+                                        value.round();
                                   },
                                   onChangeEnd: _onSeekEnd,
                                 ),
