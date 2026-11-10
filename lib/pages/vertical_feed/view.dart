@@ -8,6 +8,8 @@ import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/pages/danmaku/view.dart';
 import 'package:PiliPlus/pages/vertical_feed/controller.dart';
+import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
+import 'package:PiliPlus/pages/video/reply_reply/view.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter/material.dart';
@@ -90,18 +92,19 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
   }
 
   Widget _loadingOrError() {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Obx(() {
         if (controller.error.value != null) {
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: Colors.white, size: 42),
+              Icon(Icons.error_outline, color: scheme.onSurface, size: 42),
               const SizedBox(height: 12),
               Text(
                 controller.error.value!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: scheme.onSurface),
               ),
               const SizedBox(height: 12),
               FilledButton(
@@ -111,7 +114,7 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
             ],
           );
         }
-        return const CircularProgressIndicator();
+        return CircularProgressIndicator(color: scheme.primary);
       }),
     );
   }
@@ -204,9 +207,39 @@ class _VideoPageState extends State<_VideoPage> {
     if (_panel != 0) setState(() => _panel = 0);
   }
 
-  Widget _buildSettingsPanel() {
+  void _openReplyReply(ReplyInfo item, int? id) {
+    final oid = item.oid.toInt();
+    final rpid = item.id.toInt();
+    final height = MediaQuery.sizeOf(context).height * 0.75;
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) {
+        return SizedBox(
+          height: height,
+          child: VideoReplyReplyPanel(
+            id: id,
+            oid: oid,
+            rpid: rpid,
+            firstFloor: item.replyControl.isNote ? null : item,
+            replyType: 1,
+            isVideoDetail: true,
+            isNested: true,
+            upMid: Int64(controller.ownerMid.value),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSettingsPanel(ColorScheme scheme) {
     return Material(
-      color: const Color(0xFF2A2A2A),
+      color: scheme.surfaceContainerHigh,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: SafeArea(
         top: false,
@@ -226,63 +259,77 @@ class _VideoPageState extends State<_VideoPage> {
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(
-                      color: Colors.white30,
+                      color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
                 ),
-                const Text(
+                Text(
                   '播放设置',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: scheme.onSurface,
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Text('倍速', style: TextStyle(color: Colors.white)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) {
-                            final selected = (speed - s).abs() < 0.01;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(
-                                  s == 1.0 ? '1.0' : s.toString(),
-                                  style: TextStyle(
-                                    color: selected
-                                        ? Colors.white
-                                        : Colors.white70,
-                                  ),
-                                ),
-                                selected: selected,
-                                selectedColor: Colors.pinkAccent,
-                                backgroundColor: Colors.white12,
-                                onSelected: (_) {
-                                  controller.player.setPlaybackSpeed(s);
-                                },
-                              ),
-                            );
-                          }).toList(),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '倍速',
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) {
+                    final selected = (speed - s).abs() < 0.01;
+                    final label = s == 1.0 ? '1.0x' : '${s}x';
+                    return Material(
+                      color: selected
+                          ? scheme.primary
+                          : scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(20),
+                      child: InkWell(
+                        onTap: () => controller.player.setPlaybackSpeed(s),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              color: selected
+                                  ? scheme.onPrimary
+                                  : scheme.onSurface,
+                              fontSize: 14,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    );
+                  }).toList(),
                 ),
+                const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text(
+                  title: Text(
                     '自动连播',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: scheme.onSurface),
                   ),
                   value: mode == VerticalFeedPlayMode.autoNext,
-                  activeThumbColor: Colors.pinkAccent,
+                  activeThumbColor: scheme.primary,
                   onChanged: (v) {
                     controller.setPlayMode(
                       v
@@ -293,12 +340,12 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text(
+                  title: Text(
                     '循环当前',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: scheme.onSurface),
                   ),
                   value: mode == VerticalFeedPlayMode.loopCurrent,
-                  activeThumbColor: Colors.pinkAccent,
+                  activeThumbColor: scheme.primary,
                   onChanged: (v) {
                     controller.setPlayMode(
                       v
@@ -309,12 +356,12 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text(
+                  title: Text(
                     '显示弹幕',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: scheme.onSurface),
                   ),
                   value: danmakuOn,
-                  activeThumbColor: Colors.pinkAccent,
+                  activeThumbColor: scheme.primary,
                   onChanged: (v) {
                     controller.player.enableShowDanmaku.value = v;
                   },
@@ -327,9 +374,9 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
-  Widget _buildCoinPanel() {
+  Widget _buildCoinPanel(ColorScheme scheme) {
     return Material(
-      color: const Color(0xFF2A2A2A),
+      color: scheme.surfaceContainerHigh,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: SafeArea(
         top: false,
@@ -345,15 +392,15 @@ class _VideoPageState extends State<_VideoPage> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: Colors.white30,
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
-              const Text(
+              Text(
                 '投币',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: scheme.onSurface,
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
                 ),
@@ -364,6 +411,7 @@ class _VideoPageState extends State<_VideoPage> {
                   Expanded(
                     child: _CoinChoice(
                       label: '1 硬币',
+                      scheme: scheme,
                       onTap: () {
                         final also = _coinAlsoLike;
                         _closePanel();
@@ -375,6 +423,7 @@ class _VideoPageState extends State<_VideoPage> {
                   Expanded(
                     child: _CoinChoice(
                       label: '2 硬币',
+                      scheme: scheme,
                       onTap: () {
                         final also = _coinAlsoLike;
                         _closePanel();
@@ -387,10 +436,10 @@ class _VideoPageState extends State<_VideoPage> {
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _coinAlsoLike,
-                activeColor: Colors.pinkAccent,
-                title: const Text(
+                activeColor: scheme.primary,
+                title: Text(
                   '同时点赞',
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: scheme.onSurface),
                 ),
                 onChanged: (v) {
                   setState(() => _coinAlsoLike = v ?? true);
@@ -446,6 +495,9 @@ class _VideoPageState extends State<_VideoPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final primary = scheme.primary;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -453,7 +505,9 @@ class _VideoPageState extends State<_VideoPage> {
         final landscape = width > height;
         final compact = height < 680 || landscape;
         final bottomInset = MediaQuery.paddingOf(context).bottom;
+        final topInset = MediaQuery.paddingOf(context).top;
         final progressBottom = bottomInset > 0 ? bottomInset + 8 : 24.0;
+        final danmakuTop = topInset + 48.0;
 
         return Stack(
           fit: StackFit.expand,
@@ -474,8 +528,8 @@ class _VideoPageState extends State<_VideoPage> {
                       }
                       final videoController = controller.videoController;
                       if (!controller.ready.value || videoController == null) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
+                        return Center(
+                          child: CircularProgressIndicator(color: primary),
                         );
                       }
                       final vw = controller.player.width ?? 0;
@@ -506,14 +560,20 @@ class _VideoPageState extends State<_VideoPage> {
                       if (cid == null || cid <= 0) {
                         return const SizedBox.shrink();
                       }
-                      return IgnorePointer(
-                        child: PlDanmaku(
-                          cid: cid,
-                          playerController: controller.player,
-                          isPipMode: false,
-                          isFullScreen: true,
-                          isFileSource: false,
-                          size: Size(width, height),
+                      return Positioned(
+                        left: 0,
+                        right: 0,
+                        top: danmakuTop,
+                        bottom: 0,
+                        child: IgnorePointer(
+                          child: PlDanmaku(
+                            cid: cid,
+                            playerController: controller.player,
+                            isPipMode: false,
+                            isFullScreen: false,
+                            isFileSource: false,
+                            size: Size(width, height - danmakuTop),
+                          ),
                         ),
                       );
                     }),
@@ -624,6 +684,7 @@ class _VideoPageState extends State<_VideoPage> {
                                   : Icons.thumb_up_alt_outlined,
                               active: controller.liked.value,
                               loading: controller.liking.value,
+                              activeColor: primary,
                               label: controller.formatCount(
                                 controller.likeCount.value,
                               ),
@@ -632,6 +693,7 @@ class _VideoPageState extends State<_VideoPage> {
                             SizedBox(height: compact ? 10 : 17),
                             _FeedIconButton(
                               icon: Icons.mode_comment_outlined,
+                              activeColor: primary,
                               label: controller.formatCount(
                                 controller.replyCount.value,
                               ),
@@ -644,6 +706,7 @@ class _VideoPageState extends State<_VideoPage> {
                                   : Icons.monetization_on_outlined,
                               active: controller.coined.value,
                               loading: controller.coining.value,
+                              activeColor: primary,
                               label: controller.formatCount(
                                 controller.coinCount.value,
                               ),
@@ -656,6 +719,7 @@ class _VideoPageState extends State<_VideoPage> {
                                   : Icons.star_border_rounded,
                               active: controller.faved.value,
                               loading: controller.faving.value,
+                              activeColor: primary,
                               label: controller.formatCount(
                                 controller.favCount.value,
                               ),
@@ -664,6 +728,7 @@ class _VideoPageState extends State<_VideoPage> {
                             SizedBox(height: compact ? 10 : 17),
                             _FeedIconButton(
                               icon: Icons.share_outlined,
+                              activeColor: primary,
                               label: controller.formatCount(
                                 controller.shareCount.value,
                               ),
@@ -772,7 +837,7 @@ class _VideoPageState extends State<_VideoPage> {
                                       const RoundSliderOverlayShape(
                                     overlayRadius: 12,
                                   ),
-                                  activeTrackColor: Colors.pinkAccent,
+                                  activeTrackColor: primary,
                                   inactiveTrackColor: Colors.white24,
                                   thumbColor: Colors.white,
                                 ),
@@ -807,40 +872,63 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
               ),
             ),
-            if (_panel != 0)
-              Positioned.fill(
+            IgnorePointer(
+              ignoring: _panel == 0,
+              child: AnimatedOpacity(
+                opacity: _panel == 0 ? 0 : 1,
+                duration: const Duration(milliseconds: 220),
                 child: GestureDetector(
                   onTap: _closePanel,
                   behavior: HitTestBehavior.opaque,
                   child: Container(color: Colors.black54),
                 ),
               ),
-            if (_panel == 1)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildSettingsPanel(),
-              ),
-            if (_panel == 2)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildCoinPanel(),
-              ),
-            if (_panel == 3)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                top: MediaQuery.sizeOf(context).height * 0.3,
-                child: _CommentSheet(
-                  aid: controller.currentItem!.aid!,
-                  scrollController: ScrollController(),
-                  onClose: _closePanel,
+            ),
+            IgnorePointer(
+              ignoring: _panel != 1,
+              child: AnimatedSlide(
+                offset: _panel == 1 ? Offset.zero : const Offset(0, 1),
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _buildSettingsPanel(scheme),
                 ),
               ),
+            ),
+            IgnorePointer(
+              ignoring: _panel != 2,
+              child: AnimatedSlide(
+                offset: _panel == 2 ? Offset.zero : const Offset(0, 1),
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _buildCoinPanel(scheme),
+                ),
+              ),
+            ),
+            IgnorePointer(
+              ignoring: _panel != 3,
+              child: AnimatedSlide(
+                offset: _panel == 3 ? Offset.zero : const Offset(0, 1),
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: SizedBox(
+                    height: height * 0.72,
+                    child: _CommentSheet(
+                      aid: controller.currentItem?.aid ?? 0,
+                      scheme: scheme,
+                      onClose: _closePanel,
+                      onOpenReplyReply: _openReplyReply,
+                      upMid: Int64(controller.ownerMid.value),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Positioned(
               top: 0,
               left: 0,
@@ -851,6 +939,10 @@ class _VideoPageState extends State<_VideoPage> {
                     IconButton(
                       tooltip: '返回',
                       onPressed: () {
+                        if (_panel != 0) {
+                          _closePanel();
+                          return;
+                        }
                         if (Navigator.of(context).canPop()) {
                           Navigator.of(context).pop();
                         } else {
@@ -885,15 +977,20 @@ class _VideoPageState extends State<_VideoPage> {
 }
 
 class _CoinChoice extends StatelessWidget {
-  const _CoinChoice({required this.label, required this.onTap});
+  const _CoinChoice({
+    required this.label,
+    required this.onTap,
+    required this.scheme,
+  });
 
   final String label;
   final VoidCallback onTap;
+  final ColorScheme scheme;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF3D3428),
+      color: scheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -902,13 +999,9 @@ class _CoinChoice extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 18),
           child: Column(
             children: [
-              const Icon(
-                Icons.monetization_on,
-                color: Color(0xFFE8B86D),
-                size: 32,
-              ),
+              Icon(Icons.monetization_on, color: scheme.primary, size: 32),
               const SizedBox(height: 8),
-              Text(label, style: const TextStyle(color: Colors.white)),
+              Text(label, style: TextStyle(color: scheme.onSurface)),
             ],
           ),
         ),
@@ -920,13 +1013,17 @@ class _CoinChoice extends StatelessWidget {
 class _CommentSheet extends StatefulWidget {
   const _CommentSheet({
     required this.aid,
-    required this.scrollController,
-    this.onClose,
+    required this.scheme,
+    required this.onClose,
+    required this.onOpenReplyReply,
+    required this.upMid,
   });
 
   final int aid;
-  final ScrollController scrollController;
-  final VoidCallback? onClose;
+  final ColorScheme scheme;
+  final VoidCallback onClose;
+  final void Function(ReplyInfo item, int? id) onOpenReplyReply;
+  final Int64 upMid;
 
   @override
   State<_CommentSheet> createState() => _CommentSheetState();
@@ -934,18 +1031,40 @@ class _CommentSheet extends StatefulWidget {
 
 class _CommentSheetState extends State<_CommentSheet> {
   final List<ReplyInfo> _replies = [];
+  final ScrollController _scrollController = ScrollController();
   bool _loading = true;
   String? _error;
   Int64? _cursorNext;
   bool _ended = false;
+  int? _lastAid;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _lastAid = widget.aid;
+    if (widget.aid > 0) _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CommentSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.aid != _lastAid && widget.aid > 0) {
+      _lastAid = widget.aid;
+      _replies.clear();
+      _cursorNext = null;
+      _ended = false;
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    if (widget.aid <= 0) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -981,11 +1100,11 @@ class _CommentSheetState extends State<_CommentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+    final scheme = widget.scheme;
+    return Material(
+      color: scheme.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           const SizedBox(height: 10),
@@ -993,7 +1112,7 @@ class _CommentSheetState extends State<_CommentSheet> {
             width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.white30,
+              color: scheme.onSurfaceVariant.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -1002,12 +1121,12 @@ class _CommentSheetState extends State<_CommentSheet> {
             child: Row(
               children: [
                 const SizedBox(width: 40),
-                const Expanded(
+                Expanded(
                   child: Text(
                     '评论',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white,
+                      color: scheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1015,84 +1134,66 @@ class _CommentSheetState extends State<_CommentSheet> {
                 ),
                 IconButton(
                   onPressed: widget.onClose,
-                  icon: const Icon(Icons.close, color: Colors.white70),
+                  icon: Icon(Icons.close, color: scheme.onSurfaceVariant),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1, color: Colors.white12),
+          Divider(
+            height: 1,
+            color: scheme.outlineVariant.withValues(alpha: 0.5),
+          ),
           Expanded(
-            child: _loading && _replies.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null && _replies.isEmpty
+            child: widget.aid <= 0
+                ? Center(
+                    child: Text(
+                      '暂无视频信息',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  )
+                : _loading && _replies.isEmpty
                     ? Center(
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: Colors.white70),
+                        child: CircularProgressIndicator(
+                          color: scheme.primary,
                         ),
                       )
-                    : ListView.builder(
-                        controller: widget.scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                        itemCount: _replies.length + (_ended ? 0 : 1),
-                        itemBuilder: (context, index) {
-                          if (index >= _replies.length) {
-                            if (!_loading) {
-                              _load();
-                            }
-                            return const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            );
-                          }
-                          final r = _replies[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ClipOval(
-                                  child: NetworkImgLayer(
-                                    src: r.member.face,
-                                    width: 34,
-                                    height: 34,
-                                    type: ImageType.avatar,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        r.member.name,
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        r.content.message,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14,
-                                          height: 1.35,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                    : _error != null && _replies.isEmpty
+                        ? Center(
+                            child: Text(
+                              _error!,
+                              style:
+                                  TextStyle(color: scheme.onSurfaceVariant),
                             ),
-                          );
-                        },
-                      ),
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.only(bottom: 24),
+                            itemCount: _replies.length + (_ended ? 0 : 1),
+                            itemBuilder: (context, index) {
+                              if (index >= _replies.length) {
+                                if (!_loading) {
+                                  _load();
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: scheme.primary,
+                                    ),
+                                  ),
+                                );
+                              }
+                              final r = _replies[index];
+                              return ReplyItemGrpc(
+                                replyItem: r,
+                                replyLevel: 1,
+                                upMid: widget.upMid,
+                                replyReply: widget.onOpenReplyReply,
+                                needDivider: true,
+                              );
+                            },
+                          ),
           ),
         ],
       ),
@@ -1107,6 +1208,7 @@ class _FeedIconButton extends StatelessWidget {
     this.active = false,
     this.loading = false,
     this.label,
+    this.activeColor,
   });
 
   final IconData icon;
@@ -1114,9 +1216,13 @@ class _FeedIconButton extends StatelessWidget {
   final bool active;
   final bool loading;
   final String? label;
+  final Color? activeColor;
 
   @override
   Widget build(BuildContext context) {
+    final color = active
+        ? (activeColor ?? Theme.of(context).colorScheme.primary)
+        : Colors.white;
     return Material(
       color: Colors.transparent,
       child: InkResponse(
@@ -1142,7 +1248,7 @@ class _FeedIconButton extends StatelessWidget {
                         )
                       : Icon(
                           icon,
-                          color: active ? Colors.pinkAccent : Colors.white,
+                          color: color,
                           size: 28,
                           shadows: const [
                             Shadow(color: Colors.black, blurRadius: 5),
