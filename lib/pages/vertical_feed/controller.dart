@@ -11,10 +11,10 @@ import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/utils/accounts.dart';
-import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:flutter/widgets.dart' show ScrollController;
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -59,6 +59,15 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
   int _loadToken = 0;
   bool _disposed = false;
   bool _handlingCompletion = false;
+
+  bool get isLogin => Accounts.main.isLogin;
+
+  RcmdVideoItemAppModel? get currentItem {
+    if (currentIndex.value < 0 || currentIndex.value >= videos.length) {
+      return null;
+    }
+    return videos[currentIndex.value];
+  }
 
   @override
   void onInit() {
@@ -292,77 +301,81 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     } catch (_) {}
   }
 
-  Future<bool> toggleLike() async {
-    if (liking.value) return false;
-    if (!Accounts.get(AccountType.video).isLogin) return false;
-    if (currentIndex.value < 0 || currentIndex.value >= videos.length) {
-      return false;
+  Future<void> toggleLike() async {
+    if (liking.value) return;
+    if (!isLogin) {
+      SmartDialog.showToast('请先登录');
+      return;
     }
-
-    final bvid = videos[currentIndex.value].bvid;
-    if (bvid == null || bvid.isEmpty) return false;
+    final item = currentItem;
+    final bvid = item?.bvid;
+    if (bvid == null || bvid.isEmpty) {
+      SmartDialog.showToast('无法获取视频信息');
+      return;
+    }
 
     liking.value = true;
     try {
-      final oldValue = liked.value;
-      final res = await VideoHttp.likeVideo(bvid: bvid, type: oldValue);
-      if (_disposed) return false;
-      if (res case Success()) {
-        final newValue = !oldValue;
-        liked.value = newValue;
-        _likeCache[bvid] = newValue;
-        return true;
+      final newVal = !liked.value;
+      final res = await VideoHttp.likeVideo(bvid: bvid, type: newVal);
+      if (_disposed) return;
+      if (res case Success(:final response)) {
+        liked.value = newVal;
+        _likeCache[bvid] = newVal;
+        SmartDialog.showToast(
+          newVal ? (response.isNotEmpty ? response : '点赞成功') : '取消赞',
+        );
+      } else if (res case Error(:final errMsg)) {
+        SmartDialog.showToast(errMsg ?? '操作失败');
       }
-      return false;
-    } catch (_) {
-      return false;
+    } catch (e) {
+      SmartDialog.showToast(e.toString());
     } finally {
       if (!_disposed) liking.value = false;
     }
   }
 
-  Future<bool> coinOne() async {
-    if (coining.value) return false;
-    if (!Accounts.get(AccountType.video).isLogin) return false;
-    if (currentIndex.value < 0 || currentIndex.value >= videos.length) {
-      return false;
+  Future<void> coin(int multiply, {bool alsoLike = false}) async {
+    if (coining.value) return;
+    if (!isLogin) {
+      SmartDialog.showToast('请先登录');
+      return;
     }
-    if (coined.value) return true;
-
-    final bvid = videos[currentIndex.value].bvid;
-    if (bvid == null || bvid.isEmpty) return false;
+    if (coined.value) {
+      SmartDialog.showToast('已经投过币了');
+      return;
+    }
+    final item = currentItem;
+    final bvid = item?.bvid;
+    if (bvid == null || bvid.isEmpty) {
+      SmartDialog.showToast('无法获取视频信息');
+      return;
+    }
 
     coining.value = true;
     try {
-      final res = await VideoHttp.coinVideo(bvid: bvid, multiply: 1);
-      if (_disposed) return false;
+      final res = await VideoHttp.coinVideo(
+        bvid: bvid,
+        multiply: multiply,
+        selectLike: alsoLike ? 1 : 0,
+      );
+      if (_disposed) return;
       if (res case Success()) {
         coined.value = true;
         _coinCache[bvid] = true;
-        return true;
+        if (alsoLike && !liked.value) {
+          liked.value = true;
+          _likeCache[bvid] = true;
+        }
+        SmartDialog.showToast('投币成功');
+      } else if (res case Error(:final errMsg)) {
+        SmartDialog.showToast(errMsg ?? '投币失败');
       }
-      return false;
-    } catch (_) {
-      return false;
+    } catch (e) {
+      SmartDialog.showToast(e.toString());
     } finally {
       if (!_disposed) coining.value = false;
     }
-  }
-
-  Future<void> openComments() async {
-    if (currentIndex.value < 0 || currentIndex.value >= videos.length) return;
-    final item = videos[currentIndex.value];
-    final cid = item.cid;
-    if (cid == null) return;
-
-    await PageUtils.toVideoPage(
-      aid: item.aid,
-      bvid: item.bvid,
-      cid: cid,
-      title: item.title,
-      cover: item.cover,
-      isVertical: true,
-    );
   }
 
   Future<void> toggleMute() async {
