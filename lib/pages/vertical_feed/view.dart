@@ -142,6 +142,8 @@ class _VideoPageState extends State<_VideoPage> {
 
   VerticalFeedController get controller => widget.controller;
 
+  BuildContext get _sheetContext => Get.overlayContext ?? context;
+
   Future<void> _startFastPlayback() async {
     if (_speedBoostActive || !controller.ready.value) return;
     if (!controller.player.playerStatus.isPlaying) return;
@@ -181,10 +183,13 @@ class _VideoPageState extends State<_VideoPage> {
 
   void _showSettingsMenu() {
     showModalBottomSheet<void>(
-      context: context,
+      context: _sheetContext,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: const Color(0xFF2A2A2A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (sheetContext) {
         return SafeArea(
           child: Obx(() {
@@ -192,11 +197,7 @@ class _VideoPageState extends State<_VideoPage> {
             final danmakuOn = controller.player.enableShowDanmaku.value;
             final mode = controller.playMode.value;
 
-            return Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-              ),
+            return Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -310,7 +311,7 @@ class _VideoPageState extends State<_VideoPage> {
   void _showCoinSheet() {
     var alsoLike = true;
     showModalBottomSheet<void>(
-      context: context,
+      context: _sheetContext,
       useRootNavigator: true,
       backgroundColor: const Color(0xFF2A2A2A),
       shape: const RoundedRectangleBorder(
@@ -397,22 +398,20 @@ class _VideoPageState extends State<_VideoPage> {
       return;
     }
 
+    final height = MediaQuery.sizeOf(_sheetContext).height * 0.7;
+
     showModalBottomSheet<void>(
-      context: context,
+      context: _sheetContext,
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.58,
-          minChildSize: 0.35,
-          maxChildSize: 0.92,
-          builder: (context, scrollController) {
-            return _CommentSheet(
-              aid: aid,
-              scrollController: scrollController,
-            );
-          },
+        return SizedBox(
+          height: height,
+          child: _CommentSheet(
+            aid: aid,
+            scrollController: ScrollController(),
+          ),
         );
       },
     );
@@ -590,7 +589,7 @@ class _VideoPageState extends State<_VideoPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        name.isEmpty ? '@UP主' : '@$name',
+                                        name.isEmpty ? 'UP主' : name,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -629,48 +628,64 @@ class _VideoPageState extends State<_VideoPage> {
                     Positioned(
                       right: 8,
                       bottom: landscape ? 66 : (compact ? 92 : 112),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Obx(() {
-                            return _FeedIconButton(
+                      child: Obx(() {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _FeedIconButton(
                               icon: controller.liked.value
                                   ? Icons.thumb_up_alt
                                   : Icons.thumb_up_alt_outlined,
                               active: controller.liked.value,
                               loading: controller.liking.value,
+                              label: controller.formatCount(
+                                controller.likeCount.value,
+                              ),
                               onTap: controller.toggleLike,
-                            );
-                          }),
-                          SizedBox(height: compact ? 10 : 17),
-                          _FeedIconButton(
-                            icon: Icons.mode_comment_outlined,
-                            onTap: _showComments,
-                          ),
-                          SizedBox(height: compact ? 10 : 17),
-                          Obx(() {
-                            return _FeedIconButton(
+                            ),
+                            SizedBox(height: compact ? 10 : 17),
+                            _FeedIconButton(
+                              icon: Icons.mode_comment_outlined,
+                              label: controller.formatCount(
+                                controller.replyCount.value,
+                              ),
+                              onTap: _showComments,
+                            ),
+                            SizedBox(height: compact ? 10 : 17),
+                            _FeedIconButton(
                               icon: controller.coined.value
                                   ? Icons.monetization_on
                                   : Icons.monetization_on_outlined,
                               active: controller.coined.value,
                               loading: controller.coining.value,
+                              label: controller.formatCount(
+                                controller.coinCount.value,
+                              ),
                               onTap: _showCoinSheet,
-                            );
-                          }),
-                          SizedBox(height: compact ? 10 : 17),
-                          _FeedIconButton(
-                            icon: Icons.star_border_rounded,
-                            onTap: () =>
-                                SmartDialog.showToast('收藏请到视频页操作'),
-                          ),
-                          SizedBox(height: compact ? 10 : 17),
-                          _FeedIconButton(
-                            icon: Icons.share_outlined,
-                            onTap: _shareVideo,
-                          ),
-                        ],
-                      ),
+                            ),
+                            SizedBox(height: compact ? 10 : 17),
+                            _FeedIconButton(
+                              icon: controller.faved.value
+                                  ? Icons.star_rounded
+                                  : Icons.star_border_rounded,
+                              active: controller.faved.value,
+                              loading: controller.faving.value,
+                              label: controller.formatCount(
+                                controller.favCount.value,
+                              ),
+                              onTap: controller.toggleFav,
+                            ),
+                            SizedBox(height: compact ? 10 : 17),
+                            _FeedIconButton(
+                              icon: Icons.share_outlined,
+                              label: controller.formatCount(
+                                controller.shareCount.value,
+                              ),
+                              onTap: _shareVideo,
+                            ),
+                          ],
+                        );
+                      }),
                     ),
                     if (_showPaused)
                       const Center(
@@ -1060,12 +1075,14 @@ class _FeedIconButton extends StatelessWidget {
     required this.onTap,
     this.active = false,
     this.loading = false,
+    this.label,
   });
 
   final IconData icon;
   final VoidCallback onTap;
   final bool active;
   final bool loading;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -1075,26 +1092,44 @@ class _FeedIconButton extends StatelessWidget {
         onTap: loading ? null : onTap,
         radius: 28,
         child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: loading
-                ? const SizedBox(
-                    width: 25,
-                    height: 25,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : Icon(
-                    icon,
-                    color: active ? Colors.pinkAccent : Colors.white,
-                    size: 29,
-                    shadows: const [
-                      Shadow(color: Colors.black, blurRadius: 5),
-                    ],
+          width: 52,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 48,
+                height: 40,
+                child: Center(
+                  child: loading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(
+                          icon,
+                          color: active ? Colors.pinkAccent : Colors.white,
+                          size: 28,
+                          shadows: const [
+                            Shadow(color: Colors.black, blurRadius: 5),
+                          ],
+                        ),
+                ),
+              ),
+              if (label != null && label!.isNotEmpty)
+                Text(
+                  label!,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    height: 1.1,
+                    shadows: [Shadow(color: Colors.black, blurRadius: 4)],
                   ),
+                ),
+            ],
           ),
         ),
       ),
