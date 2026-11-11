@@ -153,6 +153,7 @@ class _VideoPage extends StatefulWidget {
 
 class _VideoPageState extends State<_VideoPage> {
   Worker? _panelWorker;
+  Worker? _indexWorker;
 
   double? _previousSpeed;
   bool _speedBoostActive = false;
@@ -170,8 +171,16 @@ class _VideoPageState extends State<_VideoPage> {
   @override
   void initState() {
     super.initState();
+
     _panelWorker = ever(controller.panelOpen, (open) {
       if (!open && _panel != 0 && mounted) {
+        setState(() => _panel = 0);
+      }
+    });
+
+    // 切换到其他视频时，清除当前页面残留的弹层状态。
+    _indexWorker = ever(controller.currentIndex, (index) {
+      if (index != widget.index && _panel != 0 && mounted) {
         setState(() => _panel = 0);
       }
     });
@@ -580,6 +589,7 @@ class _VideoPageState extends State<_VideoPage> {
   @override
   void dispose() {
     _panelWorker?.dispose();
+    _indexWorker?.dispose();
     _bufferTimer?.cancel();
     if (_speedBoostActive) {
       controller.player.setPlaybackSpeed(_previousSpeed ?? 1.0);
@@ -1057,79 +1067,91 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
               ),
             ),
-            if (controller.currentIndex.value == widget.index) ...[
-              IgnorePointer(
-                ignoring: _panel == 0,
-                child: AnimatedOpacity(
-                  opacity: _panel == 0 ? 0 : 1,
-                  duration: const Duration(milliseconds: 220),
-                  child: GestureDetector(
-                    onTap: _closePanel,
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(color: Colors.black54),
+
+            // 评论、投币、播放设置面板统一改为响应式。
+            // 当前视频索引变化时，旧页面的面板立即从树中移除。
+            Obx(() {
+              if (controller.currentIndex.value != widget.index) {
+                return const SizedBox.shrink();
+              }
+
+              return Stack(
+                children: [
+                  IgnorePointer(
+                    ignoring: _panel == 0,
+                    child: AnimatedOpacity(
+                      opacity: _panel == 0 ? 0 : 1,
+                      duration: const Duration(milliseconds: 220),
+                      child: GestureDetector(
+                        onTap: _closePanel,
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(color: Colors.black54),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              IgnorePointer(
-                ignoring: _panel != 1,
-                child: AnimatedSlide(
-                  offset: _panel == 1
-                      ? Offset.zero
-                      : const Offset(0, 1),
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: _buildSettingsPanel(scheme),
+                  IgnorePointer(
+                    ignoring: _panel != 1,
+                    child: AnimatedSlide(
+                      offset: _panel == 1
+                          ? Offset.zero
+                          : const Offset(0, 1),
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: _buildSettingsPanel(scheme),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              IgnorePointer(
-                ignoring: _panel != 2,
-                child: AnimatedSlide(
-                  offset: _panel == 2
-                      ? Offset.zero
-                      : const Offset(0, 1),
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: _buildCoinPanel(scheme),
+                  IgnorePointer(
+                    ignoring: _panel != 2,
+                    child: AnimatedSlide(
+                      offset: _panel == 2
+                          ? Offset.zero
+                          : const Offset(0, 1),
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: _buildCoinPanel(scheme),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              IgnorePointer(
-                ignoring: _panel != 3,
-                child: AnimatedSlide(
-                  offset: _panel == 3
-                      ? Offset.zero
-                      : const Offset(0, 1),
-                  duration: const Duration(milliseconds: 280),
-                  curve: Curves.easeOutCubic,
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: SizedBox(
-                      height: height * 0.72,
-                      child: _CommentSheet(
-                        key: _commentKey,
-                        aid: controller.currentItem?.aid ?? 0,
-                        scheme: scheme,
-                        onClose: _closePanel,
-                        onOpenReplyReply: _openReplyReply,
-                        upMid: Int64(controller.ownerMid.value),
-                        onReply: ([item]) => _openReplyEditor(
-                          replyItem: item,
-                          onPosted: (info) {
-                            _commentKey.currentState
-                                ?.insertReply(info);
-                          },
+                  IgnorePointer(
+                    ignoring: _panel != 3,
+                    child: AnimatedSlide(
+                      offset: _panel == 3
+                          ? Offset.zero
+                          : const Offset(0, 1),
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: SizedBox(
+                          height: height * 0.72,
+                          child: _CommentSheet(
+                            key: _commentKey,
+                            aid: controller.currentItem?.aid ?? 0,
+                            scheme: scheme,
+                            onClose: _closePanel,
+                            onOpenReplyReply: _openReplyReply,
+                            upMid: Int64(controller.ownerMid.value),
+                            onReply: ([item]) => _openReplyEditor(
+                              replyItem: item,
+                              onPosted: (info) {
+                                _commentKey.currentState
+                                    ?.insertReply(info);
+                              },
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            }),
+
             Positioned(
               top: 0,
               left: 0,
@@ -1343,126 +1365,155 @@ class _CommentSheetState extends State<_CommentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = widget.scheme;
     const bg = Color(0xFF1C1C1E);
-    const onBg = Colors.white;
-    return Material(
-      color: bg,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Column(
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(4),
+
+    // 评论列表及 ReplyItemGrpc 都使用独立的深色配色，
+    // 避免外层应用主题为浅色时出现黑底白字、白底白字等混色。
+    final scheme = widget.scheme.copyWith(
+      brightness: Brightness.dark,
+      surface: bg,
+      onSurface: Colors.white,
+      onSurfaceVariant: Colors.white70,
+      outline: Colors.white54,
+      outlineVariant: Colors.white12,
+      onInverseSurface: const Color(0xFF303033),
+    );
+
+    final baseTheme = Theme.of(context);
+
+    return Theme(
+      data: baseTheme.copyWith(
+        brightness: Brightness.dark,
+        colorScheme: scheme,
+        scaffoldBackgroundColor: bg,
+        cardColor: bg,
+        canvasColor: bg,
+        dividerColor: Colors.white12,
+        textTheme: baseTheme.textTheme.apply(
+          bodyColor: Colors.white,
+          displayColor: Colors.white,
+        ),
+        iconTheme: baseTheme.iconTheme.copyWith(
+          color: Colors.white70,
+        ),
+      ),
+      child: Material(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                    vertical: 4, horizontal: 8),
-                child: Row(
-                  children: [
-                    TextButton(
-                      onPressed: _toggleSort,
-                      child: Text(
-                        _mode == Mode.MAIN_LIST_HOT ? '最热' : '最新',
-                        style: TextStyle(
-                            color: scheme.primary, fontSize: 13),
-                      ),
-                    ),
-                    const Expanded(
-                      child: Text(
-                        '评论',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: onBg,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: widget.onClose,
-                      icon: const Icon(Icons.close,
-                          color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, color: Colors.white12),
-              Expanded(
-                child: widget.aid <= 0
-                    ? const Center(
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 4,
+                    horizontal: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      TextButton(
+                        onPressed: _toggleSort,
                         child: Text(
-                          '暂无视频信息',
-                          style: TextStyle(color: Colors.white54),
+                          _mode == Mode.MAIN_LIST_HOT ? '最热' : '最新',
+                          style: TextStyle(
+                            color: scheme.primary,
+                            fontSize: 13,
+                          ),
                         ),
-                      )
-                    : _loading && _replies.isEmpty
-                        ? Center(
-                            child: CircularProgressIndicator(
-                              color: scheme.primary,
-                            ),
-                          )
-                        : _error != null && _replies.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      _error!,
-                                      style: const TextStyle(
-                                          color: Colors.white54),
-                                    ),
-                                    TextButton(
-                                      onPressed: () =>
-                                          _load(refresh: true),
-                                      child: const Text('重试'),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : RefreshIndicator(
+                      ),
+                      const Expanded(
+                        child: Text(
+                          '评论',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: widget.onClose,
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(
+                  height: 1,
+                  color: Colors.white12,
+                ),
+                Expanded(
+                  child: widget.aid <= 0
+                      ? const Center(
+                          child: Text(
+                            '暂无视频信息',
+                            style: TextStyle(color: Colors.white54),
+                          ),
+                        )
+                      : _loading && _replies.isEmpty
+                          ? Center(
+                              child: CircularProgressIndicator(
                                 color: scheme.primary,
-                                onRefresh: () =>
-                                    _load(refresh: true),
-                                child: Theme(
-                                  data: Theme.of(context).copyWith(
-                                    brightness: Brightness.dark,
-                                    scaffoldBackgroundColor: bg,
-                                    cardColor: bg,
-                                    canvasColor: bg,
+                              ),
+                            )
+                          : _error != null && _replies.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _error!,
+                                        style: const TextStyle(
+                                          color: Colors.white54,
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            _load(refresh: true),
+                                        child: const Text('重试'),
+                                      ),
+                                    ],
                                   ),
+                                )
+                              : RefreshIndicator(
+                                  color: scheme.primary,
+                                  onRefresh: () =>
+                                      _load(refresh: true),
                                   child: ListView.builder(
                                     controller: _scrollController,
                                     physics:
                                         const AlwaysScrollableScrollPhysics(),
                                     padding: const EdgeInsets.only(
-                                        bottom: 88),
+                                      bottom: 88,
+                                    ),
                                     itemCount: _replies.length +
                                         (_ended ? 0 : 1),
                                     itemBuilder: (context, index) {
-                                      if (index >=
-                                          _replies.length) {
+                                      if (index >= _replies.length) {
                                         if (!_loading) {
                                           _load();
                                         }
-                                        return Padding(
-                                          padding:
-                                              const EdgeInsets.all(
-                                                  16),
+                                        return const Padding(
+                                          padding: EdgeInsets.all(16),
                                           child: Center(
                                             child:
                                                 CircularProgressIndicator(
                                               strokeWidth: 2,
-                                              color:
-                                                  scheme.primary,
+                                              color: Colors.white54,
                                             ),
                                           ),
                                         );
@@ -1472,38 +1523,35 @@ class _CommentSheetState extends State<_CommentSheet> {
                                         replyItem: r,
                                         replyLevel: 1,
                                         upMid: widget.upMid,
-                                        replyReply: widget
-                                            .onOpenReplyReply,
+                                        replyReply:
+                                            widget.onOpenReplyReply,
                                         onReply: (item) {
-                                          widget.onReply
-                                              ?.call(item);
+                                          widget.onReply?.call(item);
                                         },
-                                        onDelete:
-                                            (item, subIndex) {
-                                          removeReply(
-                                              item, subIndex);
+                                        onDelete: (item, subIndex) {
+                                          removeReply(item, subIndex);
                                         },
                                         needDivider: true,
                                       );
                                     },
                                   ),
                                 ),
-                              ),
-              ),
-            ],
-          ),
-          Positioned(
-            right: 16,
-            bottom: 16 + MediaQuery.paddingOf(context).bottom,
-            child: FloatingActionButton(
-              heroTag: 'vf_reply_fab',
-              backgroundColor: scheme.primary,
-              foregroundColor: scheme.onPrimary,
-              onPressed: () => widget.onReply?.call(),
-              child: const Icon(Icons.reply_rounded),
+                ),
+              ],
             ),
-          ),
-        ],
+            Positioned(
+              right: 16,
+              bottom: 16 + MediaQuery.paddingOf(context).bottom,
+              child: FloatingActionButton(
+                heroTag: 'vf_reply_fab',
+                backgroundColor: scheme.primary,
+                foregroundColor: scheme.onPrimary,
+                onPressed: () => widget.onReply?.call(),
+                child: const Icon(Icons.reply_rounded),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1560,7 +1608,9 @@ class _FeedIconButton extends StatelessWidget {
                           size: 28,
                           shadows: const [
                             Shadow(
-                                color: Colors.black, blurRadius: 5),
+                              color: Colors.black,
+                              blurRadius: 5,
+                            ),
                           ],
                         ),
                 ),
@@ -1573,7 +1623,10 @@ class _FeedIconButton extends StatelessWidget {
                     fontSize: 11,
                     height: 1.1,
                     shadows: [
-                      Shadow(color: Colors.black, blurRadius: 4)
+                      Shadow(
+                        color: Colors.black,
+                        blurRadius: 4,
+                      ),
                     ],
                   ),
                 ),
