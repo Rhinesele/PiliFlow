@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+import 'package:PiliPlus/common/widgets/scaffold/mini_scaffold.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
     show Mode, ReplyInfo;
 import 'package:PiliPlus/grpc/reply.dart';
@@ -33,6 +34,9 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
       Get.put(VerticalFeedController());
 
   final PageController pageController = PageController();
+
+  // 二级回复面板打开时，允许路由先处理 MiniScaffold 的 LocalHistoryEntry。
+  final RxBool _replyPanelOpen = false.obs;
 
   @override
   bool get wantKeepAlive => true;
@@ -67,9 +71,11 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
     return Obx(() {
       final panelOpen = controller.panelOpen.value;
       return PopScope(
-        canPop: !panelOpen,
+        canPop: !panelOpen || _replyPanelOpen.value,
         onPopInvokedWithResult: (didPop, result) {
-          if (!didPop && controller.panelOpen.value) {
+          if (!didPop &&
+              controller.panelOpen.value &&
+              !_replyPanelOpen.value) {
             controller.panelOpen.value = false;
           }
         },
@@ -98,6 +104,7 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
                       controller: controller,
                       index: index,
                       title: item.title ?? '',
+                      replyPanelOpen: _replyPanelOpen,
                     );
                   },
                 ),
@@ -141,11 +148,13 @@ class _VideoPage extends StatefulWidget {
     required this.controller,
     required this.index,
     required this.title,
+    required this.replyPanelOpen,
   });
 
   final VerticalFeedController controller;
   final int index;
   final String title;
+  final RxBool replyPanelOpen;
 
   @override
   State<_VideoPage> createState() => _VideoPageState();
@@ -167,6 +176,10 @@ class _VideoPageState extends State<_VideoPage> {
   final GlobalKey<_CommentSheetState> _commentKey =
       GlobalKey<_CommentSheetState>();
 
+  final GlobalKey<MiniScaffoldState> _replyMiniScaffoldKey =
+      GlobalKey<MiniScaffoldState>();
+  dynamic _replyReplySheet;
+
   VerticalFeedController get controller => widget.controller;
 
   @override
@@ -174,14 +187,20 @@ class _VideoPageState extends State<_VideoPage> {
     super.initState();
 
     _panelWorker = ever(controller.panelOpen, (open) {
-      if (!open && _panel != 0 && mounted) {
-        setState(() => _panel = 0);
+      if (!open) {
+        _closeReplyReplyPanel();
+        if (_panel != 0 && mounted) {
+          setState(() => _panel = 0);
+        }
       }
     });
 
     _indexWorker = ever(controller.currentIndex, (index) {
-      if (index != widget.index && _panel != 0 && mounted) {
-        setState(() => _panel = 0);
+      if (index != widget.index) {
+        _closeReplyReplyPanel();
+        if (_panel != 0 && mounted) {
+          setState(() => _panel = 0);
+        }
       }
     });
   }
@@ -298,16 +317,59 @@ class _VideoPageState extends State<_VideoPage> {
     });
   }
 
-  // 使用 PiliPlus 原生评论详情路由。
-  // VideoReplyReplyPanel 本身继承 CommonSlidePage，
-  // 不能直接作为普通 BottomSheet 的 child 使用。
+  // 在当前竖屏视频页上方打开原版二级回复面板。
+  // 一级评论仍留在原位置，视频不会因打开回复面板而暂停。
   void _openReplyReply(ReplyInfo item, int? id) {
-  VideoReplyReplyPanel.toReply(
-    oid: item.oid.toInt(),
-    rootId: item.id.toInt(),
-    rpIdStr: id?.toString(),
-    type: 1,
-  );
+    if (widget.replyPanelOpen.value) return;
+
+    final miniScaffold = _replyMiniScaffoldKey.currentState;
+    if (miniScaffold == null) {
+      SmartDialog.showToast('回复面板尚未准备好');
+      return;
+    }
+
+    late final dynamic sheet;
+    try {
+      sheet = miniScaffold.showBottomSheet(
+        (context) => VideoReplyReplyPanel(
+          enableSlide: false,
+          oid: item.oid.toInt(),
+          rpid: item.id.toInt(),
+          id: id,
+          firstFloor: item,
+          replyType: 1,
+          isVideoDetail: true,
+          isNested: true,
+          upMid: Int64(controller.ownerMid.value),
+        ),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+        ),
+        enableDrag: true,
+      );
+    } catch (e) {
+      SmartDialog.showToast('无法打开回复面板：$e');
+      return;
+    }
+
+    _replyReplySheet = sheet;
+    widget.replyPanelOpen.value = true;
+
+    sheet.completer.future.whenComplete(() {
+      if (identical(_replyReplySheet, sheet)) {
+        _replyReplySheet = null;
+        widget.replyPanelOpen.value = false;
+      }
+    });
+  }
+
+  void _closeReplyReplyPanel() {
+    final sheet = _replyReplySheet;
+    if (sheet != null) {
+      sheet.close();
+    } else if (widget.replyPanelOpen.value) {
+      widget.replyPanelOpen.value = false;
+    }
   }
 
   static const Color _panelDarkBg = Color(0xFF1C1C1E);
@@ -607,6 +669,13 @@ class _VideoPageState extends State<_VideoPage> {
       controller.player.setPlaybackSpeed(_previousSpeed ?? 1.0);
     }
 
+    final replySheet = _replyReplySheet;
+    if (replySheet != null) {
+      replySheet.close();
+      _replyReplySheet = null;
+      widget.replyPanelOpen.value = false;
+    }
+
     if (controller.panelOpen.value) {
       controller.panelOpen.value = false;
     }
@@ -634,608 +703,611 @@ class _VideoPageState extends State<_VideoPage> {
 
         final danmakuTop = topInset + 48.0;
 
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onDoubleTap: _handleDoubleTap,
-                onLongPressStart: (_) => _startFastPlayback(),
-                onLongPressEnd: (_) => _stopFastPlayback(),
-                onLongPressCancel: _stopFastPlayback,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Obx(() {
-                      if (controller.currentIndex.value != widget.index) {
-                        return const SizedBox.shrink();
-                      }
+        return MiniScaffold(
+          key: _replyMiniScaffoldKey,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTap: _handleDoubleTap,
+                  onLongPressStart: (_) => _startFastPlayback(),
+                  onLongPressEnd: (_) => _stopFastPlayback(),
+                  onLongPressCancel: _stopFastPlayback,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Obx(() {
+                        if (controller.currentIndex.value != widget.index) {
+                          return const SizedBox.shrink();
+                        }
 
-                      final videoController = controller.videoController;
+                        final videoController = controller.videoController;
 
-                      if (!controller.ready.value ||
-                          videoController == null) {
-                        return Center(
-                          child: CircularProgressIndicator(
-                            color: primary,
+                        if (!controller.ready.value ||
+                            videoController == null) {
+                          return Center(
+                            child: CircularProgressIndicator(
+                              color: primary,
+                            ),
+                          );
+                        }
+
+                        final vw = controller.player.width ?? 0;
+                        final vh = controller.player.height ?? 0;
+                        final videoLandscape = vw > vh;
+
+                        final video = Video(
+                          controller: videoController,
+                          controls: NoVideoControls,
+                          fit: videoLandscape
+                              ? BoxFit.contain
+                              : BoxFit.cover,
+                        );
+
+                        if (!videoLandscape) {
+                          return IgnorePointer(child: video);
+                        }
+
+                        return IgnorePointer(
+                          child: Transform.translate(
+                            offset: Offset(0, -height * 0.08),
+                            child: video,
                           ),
                         );
-                      }
+                      }),
+                      Obx(() {
+                        if (controller.currentIndex.value != widget.index ||
+                            !controller.ready.value ||
+                            controller.videoController == null) {
+                          return const SizedBox.shrink();
+                        }
 
-                      final vw = controller.player.width ?? 0;
-                      final vh = controller.player.height ?? 0;
-                      final videoLandscape = vw > vh;
+                        final cid = controller.videos[widget.index].cid;
 
-                      final video = Video(
-                        controller: videoController,
-                        controls: NoVideoControls,
-                        fit: videoLandscape
-                            ? BoxFit.contain
-                            : BoxFit.cover,
-                      );
+                        if (cid == null || cid <= 0) {
+                          return const SizedBox.shrink();
+                        }
 
-                      if (!videoLandscape) {
-                        return IgnorePointer(child: video);
-                      }
-
-                      return IgnorePointer(
-                        child: Transform.translate(
-                          offset: Offset(0, -height * 0.08),
-                          child: video,
-                        ),
-                      );
-                    }),
-                    Obx(() {
-                      if (controller.currentIndex.value != widget.index ||
-                          !controller.ready.value ||
-                          controller.videoController == null) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final cid = controller.videos[widget.index].cid;
-
-                      if (cid == null || cid <= 0) {
-                        return const SizedBox.shrink();
-                      }
-
-                      return Positioned(
-                        left: 0,
-                        right: 0,
-                        top: danmakuTop,
-                        bottom: 0,
-                        child: IgnorePointer(
-                          child: PlDanmaku(
-                            cid: cid,
-                            playerController: controller.player,
-                            isPipMode: false,
-                            isFullScreen: false,
-                            isFileSource: false,
-                            size: Size(width, height - danmakuTop),
+                        return Positioned(
+                          left: 0,
+                          right: 0,
+                          top: danmakuTop,
+                          bottom: 0,
+                          child: IgnorePointer(
+                            child: PlDanmaku(
+                              cid: cid,
+                              playerController: controller.player,
+                              isPipMode: false,
+                              isFullScreen: false,
+                              isFileSource: false,
+                              size: Size(width, height - danmakuTop),
+                            ),
                           ),
-                        ),
-                      );
-                    }),
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.black.withValues(alpha: 0.18),
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: 0.65),
-                              ],
-                              stops: const [0, 0.55, 1],
+                        );
+                      }),
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.18),
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.65),
+                                ],
+                                stops: const [0, 0.55, 1],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      left: 16,
-                      right: 76,
-                      bottom: compact ? 66 : 76,
-                      child: Obx(() {
-                        final face = controller.ownerFace.value;
-                        final name = controller.ownerName.value;
-                        final fans = controller.ownerFans.value;
+                      Positioned(
+                        left: 16,
+                        right: 76,
+                        bottom: compact ? 66 : 76,
+                        child: Obx(() {
+                          final face = controller.ownerFace.value;
+                          final name = controller.ownerName.value;
+                          final fans = controller.ownerFans.value;
 
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                GestureDetector(
-                                  onTap: () {
-                                    final mid = controller.ownerMid.value;
-                                    if (mid > 0) {
-                                      Get.toNamed('/member?mid=$mid');
-                                    }
-                                  },
-                                  child: ClipOval(
-                                    child: face.isNotEmpty
-                                        ? NetworkImgLayer(
-                                            src: face,
-                                            width: 36,
-                                            height: 36,
-                                            type: ImageType.avatar,
-                                          )
-                                        : Container(
-                                            width: 36,
-                                            height: 36,
-                                            color: Colors.white24,
-                                            child: const Icon(
-                                              Icons.person,
-                                              color: Colors.white70,
-                                              size: 22,
-                                            ),
-                                          ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Flexible(
-                                  child: GestureDetector(
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  GestureDetector(
                                     onTap: () {
                                       final mid = controller.ownerMid.value;
                                       if (mid > 0) {
                                         Get.toNamed('/member?mid=$mid');
                                       }
                                     },
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Flexible(
-                                              child: Text(
-                                                name.isEmpty ? 'UP主' : name,
-                                                maxLines: 1,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize:
-                                                      compact ? 14 : 16,
-                                                  fontWeight:
-                                                      FontWeight.w600,
-                                                ),
+                                    child: ClipOval(
+                                      child: face.isNotEmpty
+                                          ? NetworkImgLayer(
+                                              src: face,
+                                              width: 36,
+                                              height: 36,
+                                              type: ImageType.avatar,
+                                            )
+                                          : Container(
+                                              width: 36,
+                                              height: 36,
+                                              color: Colors.white24,
+                                              child: const Icon(
+                                                Icons.person,
+                                                color: Colors.white70,
+                                                size: 22,
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
-                                            Obx(() {
-                                              final followed =
-                                                  controller.followed.value;
-                                              final loading =
-                                                  controller.following.value;
-
-                                              return Material(
-                                                color: followed
-                                                    ? Colors.white24
-                                                    : primary,
-                                                borderRadius:
-                                                    BorderRadius.circular(14),
-                                                child: InkWell(
-                                                  onTap: loading
-                                                      ? null
-                                                      : controller
-                                                          .toggleFollow,
-                                                  borderRadius:
-                                                      BorderRadius.circular(14),
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets
-                                                            .symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 4,
-                                                    ),
-                                                    child: loading
-                                                        ? const SizedBox(
-                                                            width: 12,
-                                                            height: 12,
-                                                            child:
-                                                                CircularProgressIndicator(
-                                                              strokeWidth: 2,
-                                                              color:
-                                                                  Colors.white,
-                                                            ),
-                                                          )
-                                                        : Text(
-                                                            followed
-                                                                ? '已关注'
-                                                                : '关注',
-                                                            style:
-                                                                const TextStyle(
-                                                              color:
-                                                                  Colors.white,
-                                                              fontSize: 12,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                            ),
-                                                          ),
-                                                  ),
-                                                ),
-                                              );
-                                            }),
-                                          ],
-                                        ),
-                                        if (fans > 0)
-                                          Text(
-                                            _formatFans(fans),
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                      ],
                                     ),
                                   ),
+                                  const SizedBox(width: 10),
+                                  Flexible(
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        final mid = controller.ownerMid.value;
+                                        if (mid > 0) {
+                                          Get.toNamed('/member?mid=$mid');
+                                        }
+                                      },
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  name.isEmpty ? 'UP主' : name,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize:
+                                                        compact ? 14 : 16,
+                                                    fontWeight:
+                                                        FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Obx(() {
+                                                final followed =
+                                                    controller.followed.value;
+                                                final loading =
+                                                    controller.following.value;
+
+                                                return Material(
+                                                  color: followed
+                                                      ? Colors.white24
+                                                      : primary,
+                                                  borderRadius:
+                                                      BorderRadius.circular(14),
+                                                  child: InkWell(
+                                                    onTap: loading
+                                                        ? null
+                                                        : controller
+                                                            .toggleFollow,
+                                                    borderRadius:
+                                                        BorderRadius.circular(14),
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets
+                                                              .symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 4,
+                                                      ),
+                                                      child: loading
+                                                          ? const SizedBox(
+                                                              width: 12,
+                                                              height: 12,
+                                                              child:
+                                                                  CircularProgressIndicator(
+                                                                strokeWidth: 2,
+                                                                color:
+                                                                    Colors.white,
+                                                              ),
+                                                            )
+                                                          : Text(
+                                                              followed
+                                                                  ? '已关注'
+                                                                  : '关注',
+                                                              style:
+                                                                  const TextStyle(
+                                                                color:
+                                                                    Colors.white,
+                                                                fontSize: 12,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                              ),
+                                                            ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }),
+                                            ],
+                                          ),
+                                          if (fans > 0)
+                                            Text(
+                                              _formatFans(fans),
+                                              style: const TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                widget.title,
+                                maxLines: compact ? 2 : 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: compact ? 13 : 15,
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              widget.title,
-                              maxLines: compact ? 2 : 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: compact ? 13 : 15,
                               ),
-                            ),
-                          ],
-                        );
-                      }),
-                    ),
-                    Positioned(
-                      right: 8,
-                      bottom: landscape
-                          ? 66
-                          : (compact ? 92 : 112),
-                      child: Obx(() {
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _FeedIconButton(
-                              icon: controller.liked.value
-                                  ? FontAwesomeIcons.solidThumbsUp
-                                  : FontAwesomeIcons.thumbsUp,
-                              active: controller.liked.value,
-                              loading: controller.liking.value,
-                              activeColor: primary,
-                              label: controller.formatCount(
-                                controller.likeCount.value,
-                              ),
-                              onTap: controller.toggleLike,
-                            ),
-                            SizedBox(height: compact ? 10 : 17),
-                            _FeedIconButton(
-                              icon: Icons.mode_comment_outlined,
-                              activeColor: primary,
-                              label: controller.formatCount(
-                                controller.replyCount.value,
-                              ),
-                              onTap: _showComments,
-                            ),
-                            SizedBox(height: compact ? 10 : 17),
-                            _FeedIconButton(
-                              icon: FontAwesomeIcons.b,
-                              active: controller.coined.value,
-                              loading: controller.coining.value,
-                              activeColor: primary,
-                              label: controller.formatCount(
-                                controller.coinCount.value,
-                              ),
-                              onTap: _showCoinSheet,
-                            ),
-                            SizedBox(height: compact ? 10 : 17),
-                            _FeedIconButton(
-                              icon: controller.faved.value
-                                  ? FontAwesomeIcons.solidStar
-                                  : FontAwesomeIcons.star,
-                              active: controller.faved.value,
-                              loading: controller.faving.value,
-                              activeColor: primary,
-                              label: controller.formatCount(
-                                controller.favCount.value,
-                              ),
-                              onTap: controller.toggleFav,
-                            ),
-                            SizedBox(height: compact ? 10 : 17),
-                            _FeedIconButton(
-                              icon: FontAwesomeIcons.shareFromSquare,
-                              activeColor: primary,
-                              label: controller.formatCount(
-                                controller.shareCount.value,
-                              ),
-                              onTap: _shareVideo,
-                            ),
-                          ],
-                        );
-                      }),
-                    ),
-                    if (_showPaused)
-                      const Center(
-                        child: Icon(
-                          Icons.pause_circle_filled,
-                          color: Colors.white70,
-                          size: 72,
-                        ),
+                            ],
+                          );
+                        }),
                       ),
-                    if (_speedBoostActive)
                       Positioned(
-                        top: 80,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Text(
-                              '3倍速中',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 19,
-                                fontWeight: FontWeight.bold,
+                        right: 8,
+                        bottom: landscape
+                            ? 66
+                            : (compact ? 92 : 112),
+                        child: Obx(() {
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _FeedIconButton(
+                                icon: controller.liked.value
+                                    ? FontAwesomeIcons.solidThumbsUp
+                                    : FontAwesomeIcons.thumbsUp,
+                                active: controller.liked.value,
+                                loading: controller.liking.value,
+                                activeColor: primary,
+                                label: controller.formatCount(
+                                  controller.likeCount.value,
+                                ),
+                                onTap: controller.toggleLike,
+                              ),
+                              SizedBox(height: compact ? 10 : 17),
+                              _FeedIconButton(
+                                icon: Icons.mode_comment_outlined,
+                                activeColor: primary,
+                                label: controller.formatCount(
+                                  controller.replyCount.value,
+                                ),
+                                onTap: _showComments,
+                              ),
+                              SizedBox(height: compact ? 10 : 17),
+                              _FeedIconButton(
+                                icon: FontAwesomeIcons.b,
+                                active: controller.coined.value,
+                                loading: controller.coining.value,
+                                activeColor: primary,
+                                label: controller.formatCount(
+                                  controller.coinCount.value,
+                                ),
+                                onTap: _showCoinSheet,
+                              ),
+                              SizedBox(height: compact ? 10 : 17),
+                              _FeedIconButton(
+                                icon: controller.faved.value
+                                    ? FontAwesomeIcons.solidStar
+                                    : FontAwesomeIcons.star,
+                                active: controller.faved.value,
+                                loading: controller.faving.value,
+                                activeColor: primary,
+                                label: controller.formatCount(
+                                  controller.favCount.value,
+                                ),
+                                onTap: controller.toggleFav,
+                              ),
+                              SizedBox(height: compact ? 10 : 17),
+                              _FeedIconButton(
+                                icon: FontAwesomeIcons.shareFromSquare,
+                                activeColor: primary,
+                                label: controller.formatCount(
+                                  controller.shareCount.value,
+                                ),
+                                onTap: _shareVideo,
+                              ),
+                            ],
+                          );
+                        }),
+                      ),
+                      if (_showPaused)
+                        const Center(
+                          child: Icon(
+                            Icons.pause_circle_filled,
+                            color: Colors.white70,
+                            size: 72,
+                          ),
+                        ),
+                      if (_speedBoostActive)
+                        Positioned(
+                          top: 80,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                '3倍速中',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    Obx(() {
-                      final buffering =
-                          controller.player.isBuffering.value;
+                      Obx(() {
+                        final buffering =
+                            controller.player.isBuffering.value;
 
-                      if (buffering &&
-                          controller.ready.value &&
-                          !_showBuffering) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) {
-                            setState(() => _showBuffering = true);
-                          }
-                        });
-                      } else if (!buffering && _showBuffering) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) {
-                            setState(() => _showBuffering = false);
-                          }
-                        });
-                      }
-
-                      if (!_showBuffering) {
-                        return const SizedBox.shrink();
-                      }
-
-                      return const Center(
-                        child: Text(
-                          '加载中...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      );
-                    }),
-                    Positioned(
-                      left: 12,
-                      right: 12,
-                      bottom: progressBottom,
-                      child: Obx(() {
-                        final player = controller.player;
-                        final duration = player.duration.value;
-                        final progress = player.progress;
-
-                        if (controller.currentIndex.value != widget.index ||
-                            !controller.ready.value ||
-                            duration <= 0) {
-                          return const SizedBox(height: 18);
+                        if (buffering &&
+                            controller.ready.value &&
+                            !_showBuffering) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              setState(() => _showBuffering = true);
+                            }
+                          });
+                        } else if (!buffering && _showBuffering) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) {
+                              setState(() => _showBuffering = false);
+                            }
+                          });
                         }
 
-                        return Row(
-                          children: [
-                            Text(
-                              _formatDuration(progress),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                              ),
+                        if (!_showBuffering) {
+                          return const SizedBox.shrink();
+                        }
+
+                        return const Center(
+                          child: Text(
+                            '加载中...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 2,
-                                  thumbShape:
-                                      const RoundSliderThumbShape(
-                                    enabledThumbRadius: 6,
-                                  ),
-                                  overlayShape:
-                                      const RoundSliderOverlayShape(
-                                    overlayRadius: 12,
-                                  ),
-                                  activeTrackColor: primary,
-                                  inactiveTrackColor: Colors.white24,
-                                  thumbColor: Colors.white,
-                                ),
-                                child: Slider(
-                                  min: 0,
-                                  max: duration.toDouble(),
-                                  value: progress
-                                      .clamp(0, duration)
-                                      .toDouble(),
-                                  onChangeStart: _onSeekStart,
-                                  onChanged: (value) {
-                                    player.seekPosition.value =
-                                        value.round();
-                                  },
-                                  onChangeEnd: _onSeekEnd,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _formatDuration(duration),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
+                          ),
                         );
                       }),
-                    ),
-                  ],
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: progressBottom,
+                        child: Obx(() {
+                          final player = controller.player;
+                          final duration = player.duration.value;
+                          final progress = player.progress;
+
+                          if (controller.currentIndex.value != widget.index ||
+                              !controller.ready.value ||
+                              duration <= 0) {
+                            return const SizedBox(height: 18);
+                          }
+
+                          return Row(
+                            children: [
+                              Text(
+                                _formatDuration(progress),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 2,
+                                    thumbShape:
+                                        const RoundSliderThumbShape(
+                                      enabledThumbRadius: 6,
+                                    ),
+                                    overlayShape:
+                                        const RoundSliderOverlayShape(
+                                      overlayRadius: 12,
+                                    ),
+                                    activeTrackColor: primary,
+                                    inactiveTrackColor: Colors.white24,
+                                    thumbColor: Colors.white,
+                                  ),
+                                  child: Slider(
+                                    min: 0,
+                                    max: duration.toDouble(),
+                                    value: progress
+                                        .clamp(0, duration)
+                                        .toDouble(),
+                                    onChangeStart: _onSeekStart,
+                                    onChanged: (value) {
+                                      player.seekPosition.value =
+                                          value.round();
+                                    },
+                                    onChangeEnd: _onSeekEnd,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _formatDuration(duration),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            // 评论、投币、播放设置面板。
-            // 评论面板仅在打开时创建，关闭后立即从 Widget 树移除。
-            Obx(() {
-              if (controller.currentIndex.value != widget.index) {
-                return const SizedBox.shrink();
-              }
+              // 评论、投币、播放设置面板。
+              // 评论面板仅在打开时创建，关闭后立即从 Widget 树移除。
+              Obx(() {
+                if (controller.currentIndex.value != widget.index) {
+                  return const SizedBox.shrink();
+                }
 
-              return Stack(
-                children: [
-                  IgnorePointer(
-                    ignoring: _panel == 0,
-                    child: AnimatedOpacity(
-                      opacity: _panel == 0 ? 0 : 1,
-                      duration: const Duration(milliseconds: 220),
-                      child: GestureDetector(
-                        onTap: _closePanel,
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          color: Colors.black54,
-                        ),
-                      ),
-                    ),
-                  ),
-                  IgnorePointer(
-                    ignoring: _panel != 1,
-                    child: AnimatedSlide(
-                      offset: _panel == 1
-                          ? Offset.zero
-                          : const Offset(0, 1),
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutCubic,
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: _buildSettingsPanel(scheme),
-                      ),
-                    ),
-                  ),
-                  IgnorePointer(
-                    ignoring: _panel != 2,
-                    child: AnimatedSlide(
-                      offset: _panel == 2
-                          ? Offset.zero
-                          : const Offset(0, 1),
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutCubic,
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: _buildCoinPanel(scheme),
-                      ),
-                    ),
-                  ),
-
-                  if (_panel == 3)
-                    TweenAnimationBuilder<Offset>(
-                      tween: Tween<Offset>(
-                        begin: const Offset(0, 1),
-                        end: Offset.zero,
-                      ),
-                      duration: const Duration(milliseconds: 280),
-                      curve: Curves.easeOutCubic,
-                      builder: (context, offset, child) {
-                        return FractionalTranslation(
-                          translation: offset,
-                          child: child,
-                        );
-                      },
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: SizedBox(
-                          height: height * 0.72,
-                          child: _CommentSheet(
-                            key: _commentKey,
-                            aid: controller.currentItem?.aid ?? 0,
-                            scheme: scheme,
-                            onClose: _closePanel,
-                            onOpenReplyReply: _openReplyReply,
-                            upMid: Int64(controller.ownerMid.value),
-                            onReply: ([item]) => _openReplyEditor(
-                              replyItem: item,
-                              onPosted: (info) {
-                                _commentKey.currentState?.insertReply(info);
-                              },
-                            ),
+                return Stack(
+                  children: [
+                    IgnorePointer(
+                      ignoring: _panel == 0,
+                      child: AnimatedOpacity(
+                        opacity: _panel == 0 ? 0 : 1,
+                        duration: const Duration(milliseconds: 220),
+                        child: GestureDetector(
+                          onTap: _closePanel,
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            color: Colors.black54,
                           ),
                         ),
                       ),
                     ),
-                ],
-              );
-            }),
-
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Row(
-                  children: [
-                    IconButton(
-                      tooltip: '返回',
-                      onPressed: () {
-                        if (_panel != 0) {
-                          _closePanel();
-                          return;
-                        }
-
-                        if (Navigator.of(context).canPop()) {
-                          Navigator.of(context).pop();
-                        } else {
-                          Get.back();
-                        }
-                      },
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white,
-                        size: 22,
+                    IgnorePointer(
+                      ignoring: _panel != 1,
+                      child: AnimatedSlide(
+                        offset: _panel == 1
+                            ? Offset.zero
+                            : const Offset(0, 1),
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOutCubic,
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: _buildSettingsPanel(scheme),
+                        ),
                       ),
                     ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: '播放设置',
-                      onPressed: _showSettingsMenu,
-                      icon: const Icon(
-                        Icons.more_vert,
-                        color: Colors.white,
-                        size: 26,
+                    IgnorePointer(
+                      ignoring: _panel != 2,
+                      child: AnimatedSlide(
+                        offset: _panel == 2
+                            ? Offset.zero
+                            : const Offset(0, 1),
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOutCubic,
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: _buildCoinPanel(scheme),
+                        ),
                       ),
                     ),
+
+                    if (_panel == 3)
+                      TweenAnimationBuilder<Offset>(
+                        tween: Tween<Offset>(
+                          begin: const Offset(0, 1),
+                          end: Offset.zero,
+                        ),
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, offset, child) {
+                          return FractionalTranslation(
+                            translation: offset,
+                            child: child,
+                          );
+                        },
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: SizedBox(
+                            height: height * 0.72,
+                            child: _CommentSheet(
+                              key: _commentKey,
+                              aid: controller.currentItem?.aid ?? 0,
+                              scheme: scheme,
+                              onClose: _closePanel,
+                              onOpenReplyReply: _openReplyReply,
+                              upMid: Int64(controller.ownerMid.value),
+                              onReply: ([item]) => _openReplyEditor(
+                                replyItem: item,
+                                onPosted: (info) {
+                                  _commentKey.currentState?.insertReply(info);
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
+                );
+              }),
+
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Row(
+                    children: [
+                      IconButton(
+                        tooltip: '返回',
+                        onPressed: () {
+                          if (_panel != 0) {
+                            _closePanel();
+                            return;
+                          }
+
+                          if (Navigator.of(context).canPop()) {
+                            Navigator.of(context).pop();
+                          } else {
+                            Get.back();
+                          }
+                        },
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: '播放设置',
+                        onPressed: _showSettingsMenu,
+                        icon: const Icon(
+                          Icons.more_vert,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              ],
             ),
-          ],
         );
       },
     );
