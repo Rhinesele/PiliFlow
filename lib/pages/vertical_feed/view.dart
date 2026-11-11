@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/scaffold/mini_scaffold.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
     show Mode, ReplyInfo;
@@ -20,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
 
 class VerticalFeedPage extends StatefulWidget {
   const VerticalFeedPage({super.key});
@@ -331,17 +333,49 @@ class _VideoPageState extends State<_VideoPage> {
     late final dynamic sheet;
     try {
       sheet = miniScaffold.showBottomSheet(
-        (context) => VideoReplyReplyPanel(
-          enableSlide: false,
-          oid: item.oid.toInt(),
-          rpid: item.id.toInt(),
-          id: id,
-          firstFloor: item,
-          replyType: 1,
-          isVideoDetail: true,
-          isNested: true,
-          upMid: Int64(controller.ownerMid.value),
-        ),
+        (context) {
+          final baseTheme = Theme.of(context);
+          const replyBackground = Color(0xFF111113);
+          final replyColorScheme = baseTheme.colorScheme.copyWith(
+            brightness: Brightness.dark,
+            surface: replyBackground,
+            onSurface: Colors.white,
+            onSurfaceVariant: const Color(0xFFCACAD0),
+            outline: const Color(0xFF9A9AA0),
+            outlineVariant: const Color(0xFF29292D),
+          );
+
+          // 二级回复继续使用原版页面组件，但固定为与一级评论一致的深色主题。
+          // 同时让“评论详情”标题继承纯白正文颜色。
+          return Theme(
+            data: baseTheme.copyWith(
+              brightness: Brightness.dark,
+              colorScheme: replyColorScheme,
+              canvasColor: replyBackground,
+              scaffoldBackgroundColor: replyBackground,
+              textTheme: baseTheme.textTheme.apply(
+                bodyColor: Colors.white,
+                displayColor: Colors.white,
+              ),
+              primaryTextTheme: baseTheme.primaryTextTheme.apply(
+                bodyColor: Colors.white,
+                displayColor: Colors.white,
+              ),
+              dividerColor: const Color(0xFF29292D),
+            ),
+            child: VideoReplyReplyPanel(
+              enableSlide: false,
+              oid: item.oid.toInt(),
+              rpid: item.id.toInt(),
+              id: id,
+              firstFloor: item,
+              replyType: 1,
+              isVideoDetail: true,
+              isNested: true,
+              upMid: Int64(controller.ownerMid.value),
+            ),
+          );
+        },
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(context).height * 0.72,
         ),
@@ -1381,6 +1415,7 @@ class _CommentSheet extends StatefulWidget {
 class _CommentSheetState extends State<_CommentSheet> {
   final List<ReplyInfo> _replies = [];
   final ScrollController _scrollController = ScrollController();
+  final ListController _listController = ListController();
 
   // _loading 只表示分页加载；刷新交给 RefreshIndicator 展示，
   // 不再让列表底部的加载状态跟着刷新一起闪动。
@@ -1581,9 +1616,11 @@ class _CommentSheetState extends State<_CommentSheet> {
     final baseTheme = Theme.of(context);
 
     // 一级评论固定使用深色主题，不跟随手机系统的浅色/深色切换。
+    // 与原版二级回复面板保持同一套深色底色。
+    // 一级评论的列表、卡片、弹出层不再使用偏灰的 surface 色。
     const panelBackground = Color(0xFF111113);
-    const panelSurface = Color(0xFF19191C);
-    const panelDivider = Color(0xFF303034);
+    const panelSurface = Color(0xFF111113);
+    const panelDivider = Color(0xFF29292D);
 
     final darkScheme = ColorScheme.fromSeed(
       seedColor: baseTheme.colorScheme.primary,
@@ -1592,7 +1629,7 @@ class _CommentSheetState extends State<_CommentSheet> {
       primary: baseTheme.colorScheme.primary,
       onPrimary: Colors.white,
       secondary: baseTheme.colorScheme.secondary,
-      surface: panelSurface,
+      surface: panelBackground,
       onSurface: Colors.white,
       onSurfaceVariant: const Color(0xFFCACAD0),
       outline: const Color(0xFF9A9AA0),
@@ -1642,20 +1679,22 @@ class _CommentSheetState extends State<_CommentSheet> {
       ),
     );
 
-    // 用稳定 ID 将列表项与评论绑定。刷新/排序后即使顺序变化，
-    // Flutter 也能复用对应评论项，减少整行闪烁和状态丢失。
-    final replyIndexById = <int, int>{
-      for (var i = 0; i < _replies.length; i++)
-        _replies[i].id.toInt(): i,
-    };
+    // 直接沿用系统二级回复 BottomSheet 的形状设置；未自定义时，
+    // 按 Material 2/3 的默认顶部圆角分别回退，避免两层圆角不一致。
+    final panelShape = darkTheme.bottomSheetTheme.shape ??
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(darkTheme.useMaterial3 ? 28 : 16),
+          ),
+        );
 
+    // 评论项使用稳定 ID，配合 SuperSliverList 的 ListController，
+    // 刷新/排序时尽量复用已有列表元素，减少整屏闪动。
     return Theme(
       data: darkTheme,
       child: Material(
         color: panelBackground,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(16),
-        ),
+        shape: panelShape,
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
@@ -1765,69 +1804,66 @@ class _CommentSheetState extends State<_CommentSheet> {
                                     ],
                                   ),
                                 )
-                              : RefreshIndicator(
-                                  color: darkScheme.primary,
-                                  backgroundColor: panelSurface,
+                              : refreshIndicator(
                                   onRefresh: () => _load(refresh: true),
-                                  child: ListView.builder(
+                                  child: CustomScrollView(
                                     controller: _scrollController,
                                     physics:
                                         const AlwaysScrollableScrollPhysics(),
-                                    padding: const EdgeInsets.only(
-                                      bottom: 88,
-                                    ),
-                                    itemCount: _replies.length +
-                                        (!_ended ? 1 : 0),
-                                    findChildIndexCallback: (key) {
-                                      if (key is ValueKey<int>) {
-                                        return replyIndexById[key.value];
-                                      }
-                                      return null;
-                                    },
-                                    itemBuilder: (context, index) {
-                                      if (index >= _replies.length) {
-                                        return Padding(
-                                          padding: const EdgeInsets.all(16),
-                                          child: Center(
-                                            child: _loading
-                                                ? const SizedBox(
-                                                    width: 22,
-                                                    height: 22,
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
-                                                  )
-                                                : TextButton(
-                                                    onPressed: () => _load(),
-                                                    child: const Text(
-                                                      '加载更多',
-                                                    ),
-                                                  ),
-                                          ),
-                                        );
-                                      }
-
-                                      final reply = _replies[index];
-
-                                      return ReplyItemGrpc(
-                                        key: ValueKey<int>(
-                                          reply.id.toInt(),
+                                    slivers: [
+                                      SliverPadding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 88,
                                         ),
-                                        replyItem: reply,
-                                        replyLevel: 1,
-                                        upMid: widget.upMid,
-                                        replyReply:
-                                            widget.onOpenReplyReply,
-                                        onReply: (item) {
-                                          widget.onReply?.call(item);
-                                        },
-                                        onDelete: (item, subIndex) {
-                                          removeReply(item, subIndex);
-                                        },
-                                        needDivider: true,
-                                      );
-                                    },
+                                        sliver: SuperSliverList.builder(
+                                          listController: _listController,
+                                          itemBuilder: (context, index) {
+                                            if (index == _replies.length) {
+                                              return Padding(
+                                                padding: const EdgeInsets.all(16),
+                                                child: Center(
+                                                  child: _loading
+                                                      ? const SizedBox(
+                                                          width: 22,
+                                                          height: 22,
+                                                          child: CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                          ),
+                                                        )
+                                                      : TextButton(
+                                                          onPressed: () => _load(),
+                                                          child: const Text(
+                                                            '加载更多',
+                                                          ),
+                                                        ),
+                                                ),
+                                              );
+                                            }
+
+                                            final reply = _replies[index];
+                                            return ReplyItemGrpc(
+                                              key: ValueKey<int>(
+                                                reply.id.toInt(),
+                                              ),
+                                              replyItem: reply,
+                                              replyLevel: 1,
+                                              upMid: widget.upMid,
+                                              replyReply:
+                                                  widget.onOpenReplyReply,
+                                              onReply: (item) {
+                                                widget.onReply?.call(item);
+                                              },
+                                              onDelete: (item, subIndex) {
+                                                removeReply(item, subIndex);
+                                              },
+                                              needDivider: true,
+                                            );
+                                          },
+                                          itemCount: _replies.length +
+                                              (!_ended ? 1 : 0),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                 ),
