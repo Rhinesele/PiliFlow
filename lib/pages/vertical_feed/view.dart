@@ -302,12 +302,12 @@ class _VideoPageState extends State<_VideoPage> {
   // VideoReplyReplyPanel 本身继承 CommonSlidePage，
   // 不能直接作为普通 BottomSheet 的 child 使用。
   void _openReplyReply(ReplyInfo item, int? id) {
-    VideoReplyReplyPanel.toReply(
-      oid: item.oid.toInt(),
-      rootId: item.id.toInt(),
-      rpIdStr: id?.toString(),
-      type: 1,
-    );
+  VideoReplyReplyPanel.toReply(
+    oid: item.oid.toInt(),
+    rootId: item.id.toInt(),
+    rpIdStr: id?.toString(),
+    type: 1,
+  );
   }
 
   static const Color _panelDarkBg = Color(0xFF1C1C1E);
