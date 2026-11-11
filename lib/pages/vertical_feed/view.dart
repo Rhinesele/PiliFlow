@@ -1014,6 +1014,7 @@ class _VideoPageState extends State<_VideoPage> {
                                 active: controller.faved.value,
                                 loading: controller.faving.value,
                                 activeColor: primary,
+                                iconOffset: const Offset(-3, 0),
                                 label: controller.formatCount(
                                   controller.favCount.value,
                                 ),
@@ -1381,16 +1382,18 @@ class _CommentSheetState extends State<_CommentSheet> {
   final List<ReplyInfo> _replies = [];
   final ScrollController _scrollController = ScrollController();
 
+  // _loading 只表示分页加载；刷新交给 RefreshIndicator 展示，
+  // 不再让列表底部的加载状态跟着刷新一起闪动。
   bool _loading = false;
+  bool _refreshing = false;
+  bool _initialLoading = false;
   String? _error;
 
   Int64? _cursorNext;
   bool _ended = false;
 
-  // 每次请求都有独立编号。
-  // 旧请求返回时，如果编号已经过期，就忽略结果。
+  // 每次请求都有独立编号，旧请求不能覆盖新视频或新排序的数据。
   int _requestGeneration = 0;
-
   int _activeAid = 0;
 
   Mode _mode = Mode.MAIN_LIST_HOT;
@@ -1398,12 +1401,11 @@ class _CommentSheetState extends State<_CommentSheet> {
   @override
   void initState() {
     super.initState();
-
     _activeAid = widget.aid;
-
     _scrollController.addListener(_onScroll);
 
     if (widget.aid > 0) {
+      _initialLoading = true;
       _load(refresh: true);
     }
   }
@@ -1413,9 +1415,8 @@ class _CommentSheetState extends State<_CommentSheet> {
     super.didUpdateWidget(oldWidget);
 
     if (widget.aid != oldWidget.aid) {
-      // 视频发生变化时，使旧请求失效。
+      // 视频改变：令旧请求失效，并清理上一条视频的评论状态。
       _requestGeneration++;
-
       _activeAid = widget.aid;
 
       _replies.clear();
@@ -1423,6 +1424,8 @@ class _CommentSheetState extends State<_CommentSheet> {
       _ended = false;
       _error = null;
       _loading = false;
+      _refreshing = false;
+      _initialLoading = widget.aid > 0;
 
       if (widget.aid > 0) {
         _load(refresh: true);
@@ -1432,50 +1435,49 @@ class _CommentSheetState extends State<_CommentSheet> {
 
   @override
   void dispose() {
-    // 页面销毁后，所有未完成请求都视为过期。
     _requestGeneration++;
-
     _scrollController
       ..removeListener(_onScroll)
       ..dispose();
-
     super.dispose();
   }
 
   void _onScroll() {
     if (!_scrollController.hasClients ||
         _loading ||
+        _refreshing ||
+        _initialLoading ||
         _ended ||
         widget.aid <= 0) {
       return;
     }
 
-    final position = _scrollController.position;
-
-    if (position.extentAfter < 500) {
+    if (_scrollController.position.extentAfter < 500) {
       _load();
     }
   }
 
   Future<void> _load({bool refresh = false}) async {
     final aid = widget.aid;
-
     if (aid <= 0) return;
 
-    // 普通分页请求不允许重复启动。
-    // 刷新请求可以覆盖正在进行的旧请求。
-    if (_loading && !refresh) return;
-
-    if (!refresh && _ended) return;
+    if (!refresh && (_loading || _refreshing || _ended)) return;
 
     final generation = ++_requestGeneration;
     final requestMode = _mode;
     final requestCursor = refresh ? null : _cursorNext;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (refresh) {
+      _refreshing = true;
+
+      // 只有首次加载且没有旧数据时才显示整块加载占位。
+      // 已有评论时保留原列表，避免刷新过程中内容闪空。
+      if (_replies.isEmpty && !_initialLoading) {
+        setState(() => _initialLoading = true);
+      }
+    } else {
+      setState(() => _loading = true);
+    }
 
     try {
       final res = await ReplyGrpc.mainList(
@@ -1486,7 +1488,6 @@ class _CommentSheetState extends State<_CommentSheet> {
         cursorNext: requestCursor,
       );
 
-      // 防止旧视频、旧排序或旧刷新请求覆盖当前列表。
       if (!mounted ||
           generation != _requestGeneration ||
           aid != widget.aid ||
@@ -1498,16 +1499,18 @@ class _CommentSheetState extends State<_CommentSheet> {
         final incoming = response.replies;
 
         setState(() {
+          _refreshing = false;
+          _initialLoading = false;
+          _loading = false;
+
           if (refresh) {
-            // 刷新成功后才替换列表。
-            // 请求期间保留旧数据，避免评论区域闪空。
+            // 只在新数据成功返回后替换列表，期间始终保留旧评论。
             _replies
               ..clear()
               ..addAll(incoming);
           } else {
-            // 分页时去重，防止接口返回重复评论。
+            // 分页去重，避免接口返回重复评论。
             final existingIds = _replies.map((e) => e.id).toSet();
-
             for (final reply in incoming) {
               if (existingIds.add(reply.id)) {
                 _replies.add(reply);
@@ -1517,20 +1520,28 @@ class _CommentSheetState extends State<_CommentSheet> {
 
           _cursorNext = response.cursor.next;
           _ended = response.cursor.isEnd;
-
-          _loading = false;
           _error = null;
         });
       } else if (res case Error(:final errMsg)) {
         setState(() {
+          _refreshing = false;
+          _initialLoading = false;
           _loading = false;
           _error = errMsg ?? '加载失败';
+        });
+      } else {
+        setState(() {
+          _refreshing = false;
+          _initialLoading = false;
+          _loading = false;
         });
       }
     } catch (e) {
       if (!mounted || generation != _requestGeneration) return;
 
       setState(() {
+        _refreshing = false;
+        _initialLoading = false;
         _loading = false;
         _error = e.toString();
       });
@@ -1544,6 +1555,7 @@ class _CommentSheetState extends State<_CommentSheet> {
           : Mode.MAIN_LIST_HOT;
     });
 
+    // 排序刷新时，旧列表继续显示，直到新排序数据完整返回。
     _load(refresh: true);
   }
 
@@ -1566,28 +1578,81 @@ class _CommentSheetState extends State<_CommentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // 评论区直接使用当前系统主题，不再强制深色。
     final baseTheme = Theme.of(context);
-    final scheme = baseTheme.colorScheme;
 
-    return Theme(
-      data: baseTheme.copyWith(
-        brightness: baseTheme.brightness,
-        colorScheme: scheme,
-        scaffoldBackgroundColor: scheme.surface,
-        cardColor: scheme.surface,
-        canvasColor: scheme.surface,
-        dividerColor: scheme.outlineVariant,
-        textTheme: baseTheme.textTheme.apply(
-          bodyColor: scheme.onSurface,
-          displayColor: scheme.onSurface,
+    // 一级评论固定使用深色主题，不跟随手机系统的浅色/深色切换。
+    const panelBackground = Color(0xFF111113);
+    const panelSurface = Color(0xFF19191C);
+    const panelDivider = Color(0xFF303034);
+
+    final darkScheme = ColorScheme.fromSeed(
+      seedColor: baseTheme.colorScheme.primary,
+      brightness: Brightness.dark,
+    ).copyWith(
+      primary: baseTheme.colorScheme.primary,
+      onPrimary: Colors.white,
+      secondary: baseTheme.colorScheme.secondary,
+      surface: panelSurface,
+      onSurface: Colors.white,
+      onSurfaceVariant: const Color(0xFFCACAD0),
+      outline: const Color(0xFF9A9AA0),
+      outlineVariant: panelDivider,
+    );
+
+    final darkTextTheme = baseTheme.textTheme.apply(
+      bodyColor: Colors.white,
+      displayColor: Colors.white,
+    );
+
+    final darkTheme = baseTheme.copyWith(
+      brightness: Brightness.dark,
+      colorScheme: darkScheme,
+      scaffoldBackgroundColor: panelBackground,
+      canvasColor: panelBackground,
+      cardColor: panelSurface,
+      dividerColor: panelDivider,
+      textTheme: darkTextTheme,
+      primaryTextTheme: baseTheme.primaryTextTheme.apply(
+        bodyColor: Colors.white,
+        displayColor: Colors.white,
+      ),
+      iconTheme: baseTheme.iconTheme.copyWith(
+        color: Colors.white70,
+      ),
+      dividerTheme: baseTheme.dividerTheme.copyWith(
+        color: panelDivider,
+      ),
+      bottomSheetTheme: baseTheme.bottomSheetTheme.copyWith(
+        backgroundColor: panelSurface,
+      ),
+      dialogTheme: baseTheme.dialogTheme.copyWith(
+        backgroundColor: panelSurface,
+        titleTextStyle: darkTextTheme.titleLarge?.copyWith(
+          color: Colors.white,
         ),
-        iconTheme: baseTheme.iconTheme.copyWith(
-          color: scheme.onSurfaceVariant,
+        contentTextStyle: darkTextTheme.bodyMedium?.copyWith(
+          color: Colors.white,
         ),
       ),
+      popupMenuTheme: baseTheme.popupMenuTheme.copyWith(
+        color: panelSurface,
+        textStyle: darkTextTheme.bodyMedium?.copyWith(
+          color: Colors.white,
+        ),
+      ),
+    );
+
+    // 用稳定 ID 将列表项与评论绑定。刷新/排序后即使顺序变化，
+    // Flutter 也能复用对应评论项，减少整行闪烁和状态丢失。
+    final replyIndexById = <int, int>{
+      for (var i = 0; i < _replies.length; i++)
+        _replies[i].id.toInt(): i,
+    };
+
+    return Theme(
+      data: darkTheme,
       child: Material(
-        color: scheme.surface,
+        color: panelBackground,
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(16),
         ),
@@ -1601,66 +1666,83 @@ class _CommentSheetState extends State<_CommentSheet> {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: scheme.onSurfaceVariant.withValues(alpha: 0.35),
+                    color: Colors.white.withValues(alpha: 0.28),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 4,
-                    horizontal: 8,
-                  ),
-                  child: Row(
+
+                // 使用 Stack 将标题放在整个面板的几何中心，
+                // 不再受左右按钮宽度不同的影响。
+                SizedBox(
+                  height: 44,
+                  child: Stack(
+                    alignment: Alignment.center,
                     children: [
-                      TextButton(
-                        onPressed: _toggleSort,
-                        child: Text(
-                          _mode == Mode.MAIN_LIST_HOT ? '最热' : '最新',
-                          style: TextStyle(
-                            color: scheme.primary,
-                            fontSize: 13,
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: darkScheme.primary,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: _toggleSort,
+                          child: Text(
+                            _mode == Mode.MAIN_LIST_HOT ? '最热' : '最新',
+                            style: TextStyle(
+                              color: darkScheme.primary,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ),
-                      Expanded(
-                        child: Text(
-                          '评论',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: scheme.onSurface,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                      Center(
+                        child: IgnorePointer(
+                          child: Text(
+                            '评论',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
-                      IconButton(
-                        onPressed: widget.onClose,
-                        icon: Icon(
-                          Icons.close,
-                          color: scheme.onSurfaceVariant,
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: IconButton(
+                          tooltip: '关闭评论',
+                          onPressed: widget.onClose,
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.white70,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                Divider(
+                const Divider(
                   height: 1,
-                  color: scheme.outlineVariant,
+                  color: panelDivider,
                 ),
                 Expanded(
                   child: widget.aid <= 0
-                      ? Center(
+                      ? const Center(
                           child: Text(
                             '暂无视频信息',
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                            ),
+                            style: TextStyle(color: Colors.white70),
                           ),
                         )
-                      : _loading && _replies.isEmpty
+                      : _initialLoading && _replies.isEmpty
                           ? Center(
                               child: CircularProgressIndicator(
-                                color: scheme.primary,
+                                color: darkScheme.primary,
                               ),
                             )
                           : _error != null && _replies.isEmpty
@@ -1670,9 +1752,10 @@ class _CommentSheetState extends State<_CommentSheet> {
                                     children: [
                                       Text(
                                         _error!,
-                                        style: TextStyle(
-                                          color: scheme.onSurfaceVariant,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
                                         ),
+                                        textAlign: TextAlign.center,
                                       ),
                                       TextButton(
                                         onPressed: () =>
@@ -1683,9 +1766,9 @@ class _CommentSheetState extends State<_CommentSheet> {
                                   ),
                                 )
                               : RefreshIndicator(
-                                  color: scheme.primary,
-                                  onRefresh: () =>
-                                      _load(refresh: true),
+                                  color: darkScheme.primary,
+                                  backgroundColor: panelSurface,
+                                  onRefresh: () => _load(refresh: true),
                                   child: ListView.builder(
                                     controller: _scrollController,
                                     physics:
@@ -1695,14 +1778,25 @@ class _CommentSheetState extends State<_CommentSheet> {
                                     ),
                                     itemCount: _replies.length +
                                         (!_ended ? 1 : 0),
+                                    findChildIndexCallback: (key) {
+                                      if (key is ValueKey<int>) {
+                                        return replyIndexById[key.value];
+                                      }
+                                      return null;
+                                    },
                                     itemBuilder: (context, index) {
                                       if (index >= _replies.length) {
                                         return Padding(
                                           padding: const EdgeInsets.all(16),
                                           child: Center(
                                             child: _loading
-                                                ? const CircularProgressIndicator(
-                                                    strokeWidth: 2,
+                                                ? const SizedBox(
+                                                    width: 22,
+                                                    height: 22,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
                                                   )
                                                 : TextButton(
                                                     onPressed: () => _load(),
@@ -1717,6 +1811,9 @@ class _CommentSheetState extends State<_CommentSheet> {
                                       final reply = _replies[index];
 
                                       return ReplyItemGrpc(
+                                        key: ValueKey<int>(
+                                          reply.id.toInt(),
+                                        ),
                                         replyItem: reply,
                                         replyLevel: 1,
                                         upMid: widget.upMid,
@@ -1741,8 +1838,8 @@ class _CommentSheetState extends State<_CommentSheet> {
               bottom: 16 + MediaQuery.paddingOf(context).bottom,
               child: FloatingActionButton(
                 heroTag: 'vf_reply_fab',
-                backgroundColor: scheme.primary,
-                foregroundColor: scheme.onPrimary,
+                backgroundColor: darkScheme.primary,
+                foregroundColor: darkScheme.onPrimary,
                 onPressed: () => widget.onReply?.call(),
                 child: const Icon(Icons.reply_rounded),
               ),
@@ -1762,6 +1859,7 @@ class _FeedIconButton extends StatelessWidget {
     this.loading = false,
     this.label,
     this.activeColor,
+    this.iconOffset = Offset.zero,
   });
 
   final IconData icon;
@@ -1770,6 +1868,7 @@ class _FeedIconButton extends StatelessWidget {
   final bool loading;
   final String? label;
   final Color? activeColor;
+  final Offset iconOffset;
 
   @override
   Widget build(BuildContext context) {
@@ -1800,16 +1899,19 @@ class _FeedIconButton extends StatelessWidget {
                             color: Colors.white,
                           ),
                         )
-                      : Icon(
-                          icon,
-                          color: color,
-                          size: 28,
-                          shadows: const [
-                            Shadow(
-                              color: Colors.black,
-                              blurRadius: 5,
-                            ),
-                          ],
+                      : Transform.translate(
+                          offset: iconOffset,
+                          child: Icon(
+                            icon,
+                            color: color,
+                            size: 28,
+                            shadows: const [
+                              Shadow(
+                                color: Colors.black,
+                                blurRadius: 5,
+                              ),
+                            ],
+                          ),
                         ),
                 ),
               ),
