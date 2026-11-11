@@ -13,6 +13,7 @@ import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
+import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:flutter/widgets.dart' show ScrollController;
@@ -41,11 +42,12 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
   final faved = false.obs;
   final faving = false.obs;
   final disliked = false.obs;
+  final followed = false.obs;
+  final following = false.obs;
 
-  /// 面板打开时锁定竖滑
+  /// 面板打开时锁定竖滑；切页时强制关闭，避免评论区闪现
   final panelOpen = false.obs;
 
-  /// 预取的播放地址缓存
   final Map<
       String,
       ({
@@ -67,11 +69,25 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
   final ownerName = ''.obs;
   final ownerMid = 0.obs;
 
-  final playMode = VerticalFeedPlayMode.autoNext.obs;
+  late final playMode = VerticalFeedPlayMode
+      .values[(_readPlayModeIndex())
+          .clamp(0, VerticalFeedPlayMode.values.length - 1)]
+      .obs;
+
+  static const _playModeKey = 'verticalFeedPlayMode';
+
+  int _readPlayModeIndex() {
+    try {
+      return GStorage.setting.get(_playModeKey, defaultValue: 0) as int;
+    } catch (_) {
+      return 0;
+    }
+  }
 
   final Map<String, bool> _likeCache = {};
   final Map<String, bool> _coinCache = {};
   final Map<String, bool> _favCache = {};
+  final Map<String, bool> _followCache = {};
   final Map<int, ({String face, int fans, String name})> _ownerCache = {};
 
   int? _defaultFavFolderId;
@@ -107,7 +123,16 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     loadMore();
   }
 
-  void setPlayMode(VerticalFeedPlayMode mode) => playMode.value = mode;
+  void setPlayMode(VerticalFeedPlayMode mode) {
+    playMode.value = mode;
+    try {
+      GStorage.setting.put(_playModeKey, mode.index);
+    } catch (_) {}
+  }
+
+  void closePanel() {
+    if (panelOpen.value) panelOpen.value = false;
+  }
 
   void _onPlayerStatus(PlayerStatus status) {
     if (status != PlayerStatus.completed || _disposed || _handlingCompletion) {
@@ -161,6 +186,7 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     _likeCache.clear();
     _coinCache.clear();
     _favCache.clear();
+    _followCache.clear();
     await loadMore();
   }
 
@@ -191,11 +217,14 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
   Future<void> playIndex(int index) async {
     if (_disposed || index < 0 || index >= videos.length) return;
 
+    closePanel();
+
     currentIndex.value = index;
     ready.value = false;
     liking.value = false;
     coining.value = false;
     faving.value = false;
+    following.value = false;
 
     final token = ++_loadToken;
     final item = videos[index];
@@ -211,6 +240,7 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     coinCount.value = 0;
     favCount.value = 0;
     shareCount.value = 0;
+    followed.value = false;
 
     if (bvid == null || cid == null) {
       error.value = '该视频缺少播放信息';
@@ -220,6 +250,7 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     liked.value = _likeCache[bvid] ?? false;
     coined.value = _coinCache[bvid] ?? false;
     faved.value = _favCache[bvid] ?? false;
+    followed.value = _followCache[bvid] ?? false;
 
     unawaited(_loadRelation(bvid, token));
     unawaited(_loadIntro(bvid, token));
@@ -333,13 +364,16 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
         final coin = (response.coin ?? 0) > 0;
         final fav = response.favorite ?? false;
         final dislike = response.dislike ?? false;
+        final attention = response.attention ?? false;
         _likeCache[bvid] = like;
         _coinCache[bvid] = coin;
         _favCache[bvid] = fav;
+        _followCache[bvid] = attention;
         liked.value = like;
         coined.value = coin;
         faved.value = fav;
         disliked.value = dislike;
+        followed.value = attention;
       }
     } catch (_) {}
   }
@@ -394,6 +428,38 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
         if (name.isNotEmpty) ownerName.value = name;
       }
     } catch (_) {}
+  }
+
+  Future<void> toggleFollow() async {
+    if (following.value) return;
+    if (!isLogin) {
+      SmartDialog.showToast('请先登录');
+      return;
+    }
+    final mid = ownerMid.value;
+    if (mid <= 0) return;
+    final bvid = currentItem?.bvid ?? '';
+    following.value = true;
+    try {
+      final isFollow = followed.value;
+      final res = await VideoHttp.relationMod(
+        mid: mid,
+        act: isFollow ? 2 : 1,
+        reSrc: 11,
+      );
+      if (_disposed) return;
+      if (res case Success()) {
+        followed.value = !isFollow;
+        if (bvid.isNotEmpty) _followCache[bvid] = !isFollow;
+        SmartDialog.showToast(isFollow ? '已取消关注' : '关注成功');
+      } else if (res case Error(:final errMsg)) {
+        SmartDialog.showToast(errMsg ?? '操作失败');
+      }
+    } catch (e) {
+      SmartDialog.showToast(e.toString());
+    } finally {
+      if (!_disposed) following.value = false;
+    }
   }
 
   Future<void> toggleDislike() async {
