@@ -162,6 +162,8 @@ class _VideoPageState extends State<_VideoPage> {
 
   int _panel = 0;
   bool _coinAlsoLike = true;
+  final GlobalKey<_CommentSheetState> _commentKey =
+      GlobalKey<_CommentSheetState>();
 
   VerticalFeedController get controller => widget.controller;
 
@@ -278,7 +280,7 @@ class _VideoPageState extends State<_VideoPage> {
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: const Color(0xFF1C1C1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
@@ -300,17 +302,14 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
-  Color _panelBg(ColorScheme scheme, Brightness brightness) {
-    if (brightness == Brightness.dark) {
-      return const Color(0xFF1C1C1E);
-    }
-    return scheme.surface;
-  }
+  static const Color _panelDarkBg = Color(0xFF1C1C1E);
+
+  Color _panelBg(ColorScheme scheme, Brightness brightness) => _panelDarkBg;
 
   Widget _buildSettingsPanel(ColorScheme scheme) {
-    final brightness = Theme.of(context).brightness;
+    const onPanel = Colors.white;
     return Material(
-      color: _panelBg(scheme, brightness),
+      color: _panelDarkBg,
       elevation: 8,
       shadowColor: Colors.black54,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -332,26 +331,26 @@ class _VideoPageState extends State<_VideoPage> {
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                      color: Colors.white24,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
                 ),
-                Text(
+                const Text(
                   '播放设置',
                   style: TextStyle(
-                    color: scheme.onSurface,
+                    color: onPanel,
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 16),
-                Align(
+                const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     '倍速',
                     style: TextStyle(
-                      color: scheme.onSurface,
+                      color: onPanel,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
@@ -367,7 +366,7 @@ class _VideoPageState extends State<_VideoPage> {
                     return Material(
                       color: selected
                           ? scheme.primary
-                          : scheme.surfaceContainerHighest,
+                          : const Color(0xFF3A3A3C),
                       borderRadius: BorderRadius.circular(20),
                       child: InkWell(
                         onTap: () => controller.player.setPlaybackSpeed(s),
@@ -382,7 +381,7 @@ class _VideoPageState extends State<_VideoPage> {
                             style: TextStyle(
                               color: selected
                                   ? scheme.onPrimary
-                                  : scheme.onSurface,
+                                  : onPanel,
                               fontSize: 14,
                               fontWeight: selected
                                   ? FontWeight.w700
@@ -395,12 +394,12 @@ class _VideoPageState extends State<_VideoPage> {
                   }).toList(),
                 ),
                 const SizedBox(height: 16),
-                Align(
+                const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     '播放模式',
                     style: TextStyle(
-                      color: scheme.onSurface,
+                      color: onPanel,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
@@ -419,7 +418,7 @@ class _VideoPageState extends State<_VideoPage> {
                     return Material(
                       color: selected
                           ? scheme.primary
-                          : scheme.surfaceContainerHighest,
+                          : const Color(0xFF3A3A3C),
                       borderRadius: BorderRadius.circular(20),
                       child: InkWell(
                         onTap: () => controller.setPlayMode(e.$1),
@@ -434,7 +433,7 @@ class _VideoPageState extends State<_VideoPage> {
                             style: TextStyle(
                               color: selected
                                   ? scheme.onPrimary
-                                  : scheme.onSurface,
+                                  : onPanel,
                               fontSize: 14,
                               fontWeight: selected
                                   ? FontWeight.w700
@@ -449,9 +448,9 @@ class _VideoPageState extends State<_VideoPage> {
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(
+                  title: const Text(
                     '显示弹幕',
-                    style: TextStyle(color: scheme.onSurface),
+                    style: TextStyle(color: onPanel),
                   ),
                   value: danmakuOn,
                   activeThumbColor: scheme.primary,
@@ -468,9 +467,9 @@ class _VideoPageState extends State<_VideoPage> {
   }
 
   Widget _buildCoinPanel(ColorScheme scheme) {
-    final brightness = Theme.of(context).brightness;
+    const onPanel = Colors.white;
     return Material(
-      color: _panelBg(scheme, brightness),
+      color: _panelDarkBg,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: SafeArea(
         top: false,
@@ -486,15 +485,15 @@ class _VideoPageState extends State<_VideoPage> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+                    color: Colors.white24,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
-              Text(
+              const Text(
                 '投币',
                 style: TextStyle(
-                  color: scheme.onSurface,
+                  color: onPanel,
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
                 ),
@@ -531,9 +530,9 @@ class _VideoPageState extends State<_VideoPage> {
                 contentPadding: EdgeInsets.zero,
                 value: _coinAlsoLike,
                 activeColor: scheme.primary,
-                title: Text(
+                title: const Text(
                   '同时点赞',
-                  style: TextStyle(color: scheme.onSurface),
+                  style: TextStyle(color: onPanel),
                 ),
                 onChanged: (v) {
                   setState(() => _coinAlsoLike = v ?? true);
@@ -735,7 +734,7 @@ class _VideoPageState extends State<_VideoPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 10),
-                                Expanded(
+                                Flexible(
                                   child: GestureDetector(
                                     onTap: () {
                                       final mid = controller.ownerMid.value;
@@ -746,16 +745,85 @@ class _VideoPageState extends State<_VideoPage> {
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Text(
-                                          name.isEmpty ? 'UP主' : name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: compact ? 14 : 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                name.isEmpty ? 'UP主' : name,
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize:
+                                                      compact ? 14 : 16,
+                                                  fontWeight:
+                                                      FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Obx(() {
+                                              final followed =
+                                                  controller.followed.value;
+                                              final loading =
+                                                  controller.following.value;
+                                              return Material(
+                                                color: followed
+                                                    ? Colors.white24
+                                                    : primary,
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                        14),
+                                                child: InkWell(
+                                                  onTap: loading
+                                                      ? null
+                                                      : controller
+                                                          .toggleFollow,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          14),
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets
+                                                            .symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 4,
+                                                    ),
+                                                    child: loading
+                                                        ? const SizedBox(
+                                                            width: 12,
+                                                            height: 12,
+                                                            child:
+                                                                CircularProgressIndicator(
+                                                              strokeWidth:
+                                                                  2,
+                                                              color: Colors
+                                                                  .white,
+                                                            ),
+                                                          )
+                                                        : Text(
+                                                            followed
+                                                                ? '已关注'
+                                                                : '关注',
+                                                            style:
+                                                                const TextStyle(
+                                                              color: Colors
+                                                                  .white,
+                                                              fontSize: 12,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                            ),
+                                                          ),
+                                                  ),
+                                                ),
+                                              );
+                                            }),
+                                          ],
                                         ),
                                         if (fans > 0)
                                           Text(
@@ -769,51 +837,6 @@ class _VideoPageState extends State<_VideoPage> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Obx(() {
-                                  final followed =
-                                      controller.followed.value;
-                                  final loading =
-                                      controller.following.value;
-                                  return Material(
-                                    color: followed
-                                        ? Colors.white24
-                                        : primary,
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: InkWell(
-                                      onTap: loading
-                                          ? null
-                                          : controller.toggleFollow,
-                                      borderRadius:
-                                          BorderRadius.circular(16),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
-                                        ),
-                                        child: loading
-                                            ? const SizedBox(
-                                                width: 14,
-                                                height: 14,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: Colors.white,
-                                                ),
-                                              )
-                                            : Text(
-                                                followed ? '已关注' : '关注',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                  fontWeight:
-                                                      FontWeight.w600,
-                                                ),
-                                              ),
-                                      ),
-                                    ),
-                                  );
-                                }),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -1034,76 +1057,79 @@ class _VideoPageState extends State<_VideoPage> {
                 ),
               ),
             ),
-            IgnorePointer(
-              ignoring: _panel == 0,
-              child: AnimatedOpacity(
-                opacity: _panel == 0 ? 0 : 1,
-                duration: const Duration(milliseconds: 220),
-                child: GestureDetector(
-                  onTap: _closePanel,
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(color: Colors.black54),
+            if (controller.currentIndex.value == widget.index) ...[
+              IgnorePointer(
+                ignoring: _panel == 0,
+                child: AnimatedOpacity(
+                  opacity: _panel == 0 ? 0 : 1,
+                  duration: const Duration(milliseconds: 220),
+                  child: GestureDetector(
+                    onTap: _closePanel,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(color: Colors.black54),
+                  ),
                 ),
               ),
-            ),
-            IgnorePointer(
-              ignoring: _panel != 1,
-              child: AnimatedSlide(
-                offset:
-                    _panel == 1 ? Offset.zero : const Offset(0, 1),
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: _buildSettingsPanel(scheme),
+              IgnorePointer(
+                ignoring: _panel != 1,
+                child: AnimatedSlide(
+                  offset: _panel == 1
+                      ? Offset.zero
+                      : const Offset(0, 1),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: _buildSettingsPanel(scheme),
+                  ),
                 ),
               ),
-            ),
-            IgnorePointer(
-              ignoring: _panel != 2,
-              child: AnimatedSlide(
-                offset:
-                    _panel == 2 ? Offset.zero : const Offset(0, 1),
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: _buildCoinPanel(scheme),
+              IgnorePointer(
+                ignoring: _panel != 2,
+                child: AnimatedSlide(
+                  offset: _panel == 2
+                      ? Offset.zero
+                      : const Offset(0, 1),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: _buildCoinPanel(scheme),
+                  ),
                 ),
               ),
-            ),
-            IgnorePointer(
-              ignoring: _panel != 3,
-              child: AnimatedSlide(
-                offset:
-                    _panel == 3 ? Offset.zero : const Offset(0, 1),
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeOutCubic,
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: SizedBox(
-                    height: height * 0.72,
-                    child: _CommentSheet(
-                      aid: controller.currentItem?.aid ?? 0,
-                      scheme: scheme,
-                      onClose: _closePanel,
-                      onOpenReplyReply: _openReplyReply,
-                      upMid: Int64(controller.ownerMid.value),
-                      onReply: ([item]) => _openReplyEditor(
-                        replyItem: item,
-                        onPosted: (_) {
-                          _closePanel();
-                          Future.delayed(
-                            const Duration(milliseconds: 120),
-                            _showComments,
-                          );
-                        },
+              IgnorePointer(
+                ignoring: _panel != 3,
+                child: AnimatedSlide(
+                  offset: _panel == 3
+                      ? Offset.zero
+                      : const Offset(0, 1),
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SizedBox(
+                      height: height * 0.72,
+                      child: _CommentSheet(
+                        key: _commentKey,
+                        aid: controller.currentItem?.aid ?? 0,
+                        scheme: scheme,
+                        onClose: _closePanel,
+                        onOpenReplyReply: _openReplyReply,
+                        upMid: Int64(controller.ownerMid.value),
+                        onReply: ([item]) => _openReplyEditor(
+                          replyItem: item,
+                          onPosted: (info) {
+                            _commentKey.currentState
+                                ?.insertReply(info);
+                          },
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
+            ],
             Positioned(
               top: 0,
               left: 0,
@@ -1165,7 +1191,7 @@ class _CoinChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: scheme.surfaceContainerHighest,
+      color: const Color(0xFF3A3A3C),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -1174,9 +1200,16 @@ class _CoinChoice extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 18),
           child: Column(
             children: [
-              Icon(Icons.monetization_on, color: scheme.primary, size: 32),
+              Icon(
+                Icons.monetization_on,
+                color: scheme.primary,
+                size: 32,
+              ),
               const SizedBox(height: 8),
-              Text(label, style: TextStyle(color: scheme.onSurface)),
+              Text(
+                label,
+                style: const TextStyle(color: Colors.white),
+              ),
             ],
           ),
         ),
@@ -1187,6 +1220,7 @@ class _CoinChoice extends StatelessWidget {
 
 class _CommentSheet extends StatefulWidget {
   const _CommentSheet({
+    super.key,
     required this.aid,
     required this.scheme,
     required this.onClose,
@@ -1293,15 +1327,25 @@ class _CommentSheetState extends State<_CommentSheet> {
     _load(refresh: true);
   }
 
+  void insertReply(ReplyInfo info) {
+    if (!mounted) return;
+    setState(() {
+      _replies.insert(0, info);
+    });
+  }
+
+  void removeReply(ReplyInfo item, int? subIndex) {
+    if (!mounted) return;
+    setState(() {
+      _replies.removeWhere((e) => e.id == item.id);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = widget.scheme;
-    final brightness = Theme.of(context).brightness;
-    final bg = brightness == Brightness.dark
-        ? const Color(0xFF1C1C1E)
-        : scheme.surface;
-    final onBg =
-        brightness == Brightness.dark ? Colors.white : scheme.onSurface;
+    const bg = Color(0xFF1C1C1E);
+    const onBg = Colors.white;
     return Material(
       color: bg,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -1315,13 +1359,13 @@ class _CommentSheetState extends State<_CommentSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: scheme.onSurfaceVariant.withValues(alpha: 0.35),
+                  color: Colors.white24,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                    vertical: 4, horizontal: 8),
                 child: Row(
                   children: [
                     TextButton(
@@ -1329,12 +1373,10 @@ class _CommentSheetState extends State<_CommentSheet> {
                       child: Text(
                         _mode == Mode.MAIN_LIST_HOT ? '最热' : '最新',
                         style: TextStyle(
-                          color: scheme.primary,
-                          fontSize: 13,
-                        ),
+                            color: scheme.primary, fontSize: 13),
                       ),
                     ),
-                    Expanded(
+                    const Expanded(
                       child: Text(
                         '评论',
                         textAlign: TextAlign.center,
@@ -1347,26 +1389,19 @@ class _CommentSheetState extends State<_CommentSheet> {
                     ),
                     IconButton(
                       onPressed: widget.onClose,
-                      icon: Icon(
-                        Icons.close,
-                        color: scheme.onSurfaceVariant,
-                      ),
+                      icon: const Icon(Icons.close,
+                          color: Colors.white70),
                     ),
                   ],
                 ),
               ),
-              Divider(
-                height: 1,
-                color: scheme.outlineVariant.withValues(alpha: 0.5),
-              ),
+              const Divider(height: 1, color: Colors.white12),
               Expanded(
                 child: widget.aid <= 0
-                    ? Center(
+                    ? const Center(
                         child: Text(
                           '暂无视频信息',
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                          ),
+                          style: TextStyle(color: Colors.white54),
                         ),
                       )
                     : _loading && _replies.isEmpty
@@ -1382,9 +1417,8 @@ class _CommentSheetState extends State<_CommentSheet> {
                                   children: [
                                     Text(
                                       _error!,
-                                      style: TextStyle(
-                                        color: scheme.onSurfaceVariant,
-                                      ),
+                                      style: const TextStyle(
+                                          color: Colors.white54),
                                     ),
                                     TextButton(
                                       onPressed: () =>
@@ -1396,35 +1430,39 @@ class _CommentSheetState extends State<_CommentSheet> {
                               )
                             : RefreshIndicator(
                                 color: scheme.primary,
-                                onRefresh: () => _load(refresh: true),
+                                onRefresh: () =>
+                                    _load(refresh: true),
                                 child: Theme(
                                   data: Theme.of(context).copyWith(
-                                    brightness: brightness,
-                                    colorScheme: scheme,
+                                    brightness: Brightness.dark,
                                     scaffoldBackgroundColor: bg,
                                     cardColor: bg,
+                                    canvasColor: bg,
                                   ),
                                   child: ListView.builder(
                                     controller: _scrollController,
                                     physics:
                                         const AlwaysScrollableScrollPhysics(),
-                                    padding:
-                                        const EdgeInsets.only(bottom: 88),
+                                    padding: const EdgeInsets.only(
+                                        bottom: 88),
                                     itemCount: _replies.length +
                                         (_ended ? 0 : 1),
                                     itemBuilder: (context, index) {
-                                      if (index >= _replies.length) {
+                                      if (index >=
+                                          _replies.length) {
                                         if (!_loading) {
                                           _load();
                                         }
                                         return Padding(
                                           padding:
-                                              const EdgeInsets.all(16),
+                                              const EdgeInsets.all(
+                                                  16),
                                           child: Center(
                                             child:
                                                 CircularProgressIndicator(
                                               strokeWidth: 2,
-                                              color: scheme.primary,
+                                              color:
+                                                  scheme.primary,
                                             ),
                                           ),
                                         );
@@ -1434,10 +1472,16 @@ class _CommentSheetState extends State<_CommentSheet> {
                                         replyItem: r,
                                         replyLevel: 1,
                                         upMid: widget.upMid,
-                                        replyReply:
-                                            widget.onOpenReplyReply,
+                                        replyReply: widget
+                                            .onOpenReplyReply,
                                         onReply: (item) {
-                                          widget.onReply?.call(item);
+                                          widget.onReply
+                                              ?.call(item);
+                                        },
+                                        onDelete:
+                                            (item, subIndex) {
+                                          removeReply(
+                                              item, subIndex);
                                         },
                                         needDivider: true,
                                       );
@@ -1513,9 +1557,10 @@ class _FeedIconButton extends StatelessWidget {
                       : Icon(
                           icon,
                           color: color,
-                          size: 22,
+                          size: 28,
                           shadows: const [
-                            Shadow(color: Colors.black, blurRadius: 5),
+                            Shadow(
+                                color: Colors.black, blurRadius: 5),
                           ],
                         ),
                 ),
@@ -1528,7 +1573,7 @@ class _FeedIconButton extends StatelessWidget {
                     fontSize: 11,
                     height: 1.1,
                     shadows: [
-                      Shadow(color: Colors.black, blurRadius: 4),
+                      Shadow(color: Colors.black, blurRadius: 4)
                     ],
                   ),
                 ),
