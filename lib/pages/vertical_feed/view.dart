@@ -85,7 +85,7 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
                       : const PageScrollPhysics(),
                   itemCount: controller.videos.length,
                   onPageChanged: (index) {
-                    if (controller.panelOpen.value) return;
+                    controller.closePanel();
                     controller.playIndex(index);
                     if (index >= controller.videos.length - 3) {
                       controller.loadMore();
@@ -236,7 +236,10 @@ class _VideoPageState extends State<_VideoPage> {
     if (_panel != 0) _setPanel(0);
   }
 
-  void _openReplyEditor({ReplyInfo? replyItem}) {
+  void _openReplyEditor({
+    ReplyInfo? replyItem,
+    void Function(ReplyInfo info)? onPosted,
+  }) {
     final aid = controller.currentItem?.aid;
     if (aid == null) {
       SmartDialog.showToast('无法获取视频信息');
@@ -246,7 +249,8 @@ class _VideoPageState extends State<_VideoPage> {
       SmartDialog.showToast('请先登录');
       return;
     }
-    Get.key.currentState?.push(
+    Get.key.currentState
+        ?.push(
       PublishRoute(
         pageBuilder: (context, animation, secondaryAnimation) {
           return ReplyPage(
@@ -258,7 +262,12 @@ class _VideoPageState extends State<_VideoPage> {
           );
         },
       ),
-    );
+    )
+        .then((result) {
+      if (result is ReplyInfo) {
+        onPosted?.call(result);
+      }
+    });
   }
 
   void _openReplyReply(ReplyInfo item, int? id) {
@@ -291,9 +300,17 @@ class _VideoPageState extends State<_VideoPage> {
     );
   }
 
+  Color _panelBg(ColorScheme scheme, Brightness brightness) {
+    if (brightness == Brightness.dark) {
+      return const Color(0xFF1C1C1E);
+    }
+    return scheme.surface;
+  }
+
   Widget _buildSettingsPanel(ColorScheme scheme) {
+    final brightness = Theme.of(context).brightness;
     return Material(
-      color: scheme.surface,
+      color: _panelBg(scheme, brightness),
       elevation: 8,
       shadowColor: Colors.black54,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -377,39 +394,59 @@ class _VideoPageState extends State<_VideoPage> {
                     );
                   }).toList(),
                 ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '播放模式',
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    (VerticalFeedPlayMode.autoNext, '自动连播'),
+                    (VerticalFeedPlayMode.loopCurrent, '循环当前'),
+                    (VerticalFeedPlayMode.stop, '播完暂停'),
+                  ].map((e) {
+                    final selected = mode == e.$1;
+                    return Material(
+                      color: selected
+                          ? scheme.primary
+                          : scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(20),
+                      child: InkWell(
+                        onTap: () => controller.setPlayMode(e.$1),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            e.$2,
+                            style: TextStyle(
+                              color: selected
+                                  ? scheme.onPrimary
+                                  : scheme.onSurface,
+                              fontSize: 14,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
                 const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    '自动连播',
-                    style: TextStyle(color: scheme.onSurface),
-                  ),
-                  value: mode == VerticalFeedPlayMode.autoNext,
-                  activeThumbColor: scheme.primary,
-                  onChanged: (v) {
-                    controller.setPlayMode(
-                      v
-                          ? VerticalFeedPlayMode.autoNext
-                          : VerticalFeedPlayMode.loopCurrent,
-                    );
-                  },
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    '循环当前',
-                    style: TextStyle(color: scheme.onSurface),
-                  ),
-                  value: mode == VerticalFeedPlayMode.loopCurrent,
-                  activeThumbColor: scheme.primary,
-                  onChanged: (v) {
-                    controller.setPlayMode(
-                      v
-                          ? VerticalFeedPlayMode.loopCurrent
-                          : VerticalFeedPlayMode.autoNext,
-                    );
-                  },
-                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
@@ -431,8 +468,9 @@ class _VideoPageState extends State<_VideoPage> {
   }
 
   Widget _buildCoinPanel(ColorScheme scheme) {
+    final brightness = Theme.of(context).brightness;
     return Material(
-      color: scheme.surface,
+      color: _panelBg(scheme, brightness),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: SafeArea(
         top: false,
@@ -669,52 +707,113 @@ class _VideoPageState extends State<_VideoPage> {
                           children: [
                             Row(
                               children: [
-                                ClipOval(
-                                  child: face.isNotEmpty
-                                      ? NetworkImgLayer(
-                                          src: face,
-                                          width: 36,
-                                          height: 36,
-                                          type: ImageType.avatar,
-                                        )
-                                      : Container(
-                                          width: 36,
-                                          height: 36,
-                                          color: Colors.white24,
-                                          child: const Icon(
-                                            Icons.person,
-                                            color: Colors.white70,
-                                            size: 22,
+                                GestureDetector(
+                                  onTap: () {
+                                    final mid = controller.ownerMid.value;
+                                    if (mid > 0) {
+                                      Get.toNamed('/member?mid=$mid');
+                                    }
+                                  },
+                                  child: ClipOval(
+                                    child: face.isNotEmpty
+                                        ? NetworkImgLayer(
+                                            src: face,
+                                            width: 36,
+                                            height: 36,
+                                            type: ImageType.avatar,
+                                          )
+                                        : Container(
+                                            width: 36,
+                                            height: 36,
+                                            color: Colors.white24,
+                                            child: const Icon(
+                                              Icons.person,
+                                              color: Colors.white70,
+                                              size: 22,
+                                            ),
                                           ),
-                                        ),
+                                  ),
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        name.isEmpty ? 'UP主' : name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: compact ? 14 : 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      if (fans > 0)
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      final mid = controller.ownerMid.value;
+                                      if (mid > 0) {
+                                        Get.toNamed('/member?mid=$mid');
+                                      }
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
                                         Text(
-                                          _formatFans(fans),
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 12,
+                                          name.isEmpty ? 'UP主' : name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: compact ? 14 : 16,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
-                                    ],
+                                        if (fans > 0)
+                                          Text(
+                                            _formatFans(fans),
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ),
+                                const SizedBox(width: 8),
+                                Obx(() {
+                                  final followed =
+                                      controller.followed.value;
+                                  final loading =
+                                      controller.following.value;
+                                  return Material(
+                                    color: followed
+                                        ? Colors.white24
+                                        : primary,
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: InkWell(
+                                      onTap: loading
+                                          ? null
+                                          : controller.toggleFollow,
+                                      borderRadius:
+                                          BorderRadius.circular(16),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        child: loading
+                                            ? const SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : Text(
+                                                followed ? '已关注' : '关注',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight:
+                                                      FontWeight.w600,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+                                  );
+                                }),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -831,17 +930,20 @@ class _VideoPageState extends State<_VideoPage> {
                         ),
                       ),
                     Obx(() {
-                      final buffering = controller.player.isBuffering.value;
+                      final buffering =
+                          controller.player.isBuffering.value;
                       if (buffering &&
                           controller.ready.value &&
                           !_showBuffering) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                        WidgetsBinding.instance
+                            .addPostFrameCallback((_) {
                           if (mounted) {
                             setState(() => _showBuffering = true);
                           }
                         });
                       } else if (!buffering && _showBuffering) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                        WidgetsBinding.instance
+                            .addPostFrameCallback((_) {
                           if (mounted) {
                             setState(() => _showBuffering = false);
                           }
@@ -869,7 +971,8 @@ class _VideoPageState extends State<_VideoPage> {
                         final player = controller.player;
                         final duration = player.duration.value;
                         final progress = player.progress;
-                        if (controller.currentIndex.value != widget.index ||
+                        if (controller.currentIndex.value !=
+                                widget.index ||
                             !controller.ready.value ||
                             duration <= 0) {
                           return const SizedBox(height: 18);
@@ -888,7 +991,8 @@ class _VideoPageState extends State<_VideoPage> {
                               child: SliderTheme(
                                 data: SliderTheme.of(context).copyWith(
                                   trackHeight: 2,
-                                  thumbShape: const RoundSliderThumbShape(
+                                  thumbShape:
+                                      const RoundSliderThumbShape(
                                     enabledThumbRadius: 6,
                                   ),
                                   overlayShape:
@@ -945,7 +1049,8 @@ class _VideoPageState extends State<_VideoPage> {
             IgnorePointer(
               ignoring: _panel != 1,
               child: AnimatedSlide(
-                offset: _panel == 1 ? Offset.zero : const Offset(0, 1),
+                offset:
+                    _panel == 1 ? Offset.zero : const Offset(0, 1),
                 duration: const Duration(milliseconds: 260),
                 curve: Curves.easeOutCubic,
                 child: Align(
@@ -957,7 +1062,8 @@ class _VideoPageState extends State<_VideoPage> {
             IgnorePointer(
               ignoring: _panel != 2,
               child: AnimatedSlide(
-                offset: _panel == 2 ? Offset.zero : const Offset(0, 1),
+                offset:
+                    _panel == 2 ? Offset.zero : const Offset(0, 1),
                 duration: const Duration(milliseconds: 260),
                 curve: Curves.easeOutCubic,
                 child: Align(
@@ -969,7 +1075,8 @@ class _VideoPageState extends State<_VideoPage> {
             IgnorePointer(
               ignoring: _panel != 3,
               child: AnimatedSlide(
-                offset: _panel == 3 ? Offset.zero : const Offset(0, 1),
+                offset:
+                    _panel == 3 ? Offset.zero : const Offset(0, 1),
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeOutCubic,
                 child: Align(
@@ -982,8 +1089,16 @@ class _VideoPageState extends State<_VideoPage> {
                       onClose: _closePanel,
                       onOpenReplyReply: _openReplyReply,
                       upMid: Int64(controller.ownerMid.value),
-                      onReply: ([item]) =>
-                          _openReplyEditor(replyItem: item),
+                      onReply: ([item]) => _openReplyEditor(
+                        replyItem: item,
+                        onPosted: (_) {
+                          _closePanel();
+                          Future.delayed(
+                            const Duration(milliseconds: 120),
+                            _showComments,
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -1099,12 +1214,13 @@ class _CommentSheetState extends State<_CommentSheet> {
   Int64? _cursorNext;
   bool _ended = false;
   int? _lastAid;
+  Mode _mode = Mode.MAIN_LIST_HOT;
 
   @override
   void initState() {
     super.initState();
     _lastAid = widget.aid;
-    if (widget.aid > 0) _load();
+    if (widget.aid > 0) _load(refresh: true);
   }
 
   @override
@@ -1112,10 +1228,7 @@ class _CommentSheetState extends State<_CommentSheet> {
     super.didUpdateWidget(oldWidget);
     if (widget.aid != _lastAid && widget.aid > 0) {
       _lastAid = widget.aid;
-      _replies.clear();
-      _cursorNext = null;
-      _ended = false;
-      _load();
+      _load(refresh: true);
     }
   }
 
@@ -1125,8 +1238,13 @@ class _CommentSheetState extends State<_CommentSheet> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool refresh = false}) async {
     if (widget.aid <= 0) return;
+    if (refresh) {
+      _replies.clear();
+      _cursorNext = null;
+      _ended = false;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -1135,13 +1253,19 @@ class _CommentSheetState extends State<_CommentSheet> {
       final res = await ReplyGrpc.mainList(
         oid: widget.aid,
         type: 1,
-        mode: Mode.MAIN_LIST_HOT,
+        mode: _mode,
         offset: null,
-        cursorNext: _cursorNext,
+        cursorNext: refresh ? null : _cursorNext,
       );
       if (!mounted) return;
       if (res case Success(:final response)) {
-        _replies.addAll(response.replies);
+        if (refresh) {
+          _replies
+            ..clear()
+            ..addAll(response.replies);
+        } else {
+          _replies.addAll(response.replies);
+        }
         _cursorNext = response.cursor.next;
         _ended = response.cursor.isEnd;
         setState(() => _loading = false);
@@ -1160,11 +1284,26 @@ class _CommentSheetState extends State<_CommentSheet> {
     }
   }
 
+  void _toggleSort() {
+    setState(() {
+      _mode = _mode == Mode.MAIN_LIST_HOT
+          ? Mode.MAIN_LIST_TIME
+          : Mode.MAIN_LIST_HOT;
+    });
+    _load(refresh: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = widget.scheme;
+    final brightness = Theme.of(context).brightness;
+    final bg = brightness == Brightness.dark
+        ? const Color(0xFF1C1C1E)
+        : scheme.surface;
+    final onBg =
+        brightness == Brightness.dark ? Colors.white : scheme.onSurface;
     return Material(
-      color: scheme.surface,
+      color: bg,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -1185,13 +1324,22 @@ class _CommentSheetState extends State<_CommentSheet> {
                     const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                 child: Row(
                   children: [
-                    const SizedBox(width: 40),
+                    TextButton(
+                      onPressed: _toggleSort,
+                      child: Text(
+                        _mode == Mode.MAIN_LIST_HOT ? '最热' : '最新',
+                        style: TextStyle(
+                          color: scheme.primary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
                     Expanded(
                       child: Text(
                         '评论',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: scheme.onSurface,
+                          color: onBg,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1199,8 +1347,10 @@ class _CommentSheetState extends State<_CommentSheet> {
                     ),
                     IconButton(
                       onPressed: widget.onClose,
-                      icon:
-                          Icon(Icons.close, color: scheme.onSurfaceVariant),
+                      icon: Icon(
+                        Icons.close,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -1214,8 +1364,9 @@ class _CommentSheetState extends State<_CommentSheet> {
                     ? Center(
                         child: Text(
                           '暂无视频信息',
-                          style:
-                              TextStyle(color: scheme.onSurfaceVariant),
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       )
                     : _loading && _replies.isEmpty
@@ -1226,46 +1377,73 @@ class _CommentSheetState extends State<_CommentSheet> {
                           )
                         : _error != null && _replies.isEmpty
                             ? Center(
-                                child: Text(
-                                  _error!,
-                                  style: TextStyle(
-                                    color: scheme.onSurfaceVariant,
-                                  ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _error!,
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          _load(refresh: true),
+                                      child: const Text('重试'),
+                                    ),
+                                  ],
                                 ),
                               )
-                            : ListView.builder(
-                                controller: _scrollController,
-                                padding:
-                                    const EdgeInsets.only(bottom: 80),
-                                itemCount:
-                                    _replies.length + (_ended ? 0 : 1),
-                                itemBuilder: (context, index) {
-                                  if (index >= _replies.length) {
-                                    if (!_loading) {
-                                      _load();
-                                    }
-                                    return Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Center(
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: scheme.primary,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  final r = _replies[index];
-                                  return ReplyItemGrpc(
-                                    replyItem: r,
-                                    replyLevel: 1,
-                                    upMid: widget.upMid,
-                                    replyReply: widget.onOpenReplyReply,
-                                    onReply: (item) {
-                                      widget.onReply?.call(item);
+                            : RefreshIndicator(
+                                color: scheme.primary,
+                                onRefresh: () => _load(refresh: true),
+                                child: Theme(
+                                  data: Theme.of(context).copyWith(
+                                    brightness: brightness,
+                                    colorScheme: scheme,
+                                    scaffoldBackgroundColor: bg,
+                                    cardColor: bg,
+                                  ),
+                                  child: ListView.builder(
+                                    controller: _scrollController,
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
+                                    padding:
+                                        const EdgeInsets.only(bottom: 88),
+                                    itemCount: _replies.length +
+                                        (_ended ? 0 : 1),
+                                    itemBuilder: (context, index) {
+                                      if (index >= _replies.length) {
+                                        if (!_loading) {
+                                          _load();
+                                        }
+                                        return Padding(
+                                          padding:
+                                              const EdgeInsets.all(16),
+                                          child: Center(
+                                            child:
+                                                CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: scheme.primary,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      final r = _replies[index];
+                                      return ReplyItemGrpc(
+                                        replyItem: r,
+                                        replyLevel: 1,
+                                        upMid: widget.upMid,
+                                        replyReply:
+                                            widget.onOpenReplyReply,
+                                        onReply: (item) {
+                                          widget.onReply?.call(item);
+                                        },
+                                        needDivider: true,
+                                      );
                                     },
-                                    needDivider: true,
-                                  );
-                                },
+                                  ),
+                                ),
                               ),
               ),
             ],
@@ -1349,7 +1527,9 @@ class _FeedIconButton extends StatelessWidget {
                     color: Colors.white,
                     fontSize: 11,
                     height: 1.1,
-                    shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                    shadows: [
+                      Shadow(color: Colors.black, blurRadius: 4),
+                    ],
                   ),
                 ),
             ],
