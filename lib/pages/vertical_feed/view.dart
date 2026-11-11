@@ -163,6 +163,7 @@ class _VideoPageState extends State<_VideoPage> {
 
   int _panel = 0;
   bool _coinAlsoLike = true;
+
   final GlobalKey<_CommentSheetState> _commentKey =
       GlobalKey<_CommentSheetState>();
 
@@ -178,7 +179,6 @@ class _VideoPageState extends State<_VideoPage> {
       }
     });
 
-    // 切换到其他视频时，清除当前页面残留的弹层状态。
     _indexWorker = ever(controller.currentIndex, (index) {
       if (index != widget.index && _panel != 0 && mounted) {
         setState(() => _panel = 0);
@@ -189,35 +189,47 @@ class _VideoPageState extends State<_VideoPage> {
   Future<void> _startFastPlayback() async {
     if (_speedBoostActive || !controller.ready.value) return;
     if (!controller.player.playerStatus.isPlaying) return;
+
     _previousSpeed = controller.player.playbackSpeed;
     _speedBoostActive = true;
+
     if (mounted) setState(() {});
+
     await controller.player.setPlaybackSpeed(3.0);
   }
 
   Future<void> _stopFastPlayback() async {
     if (!_speedBoostActive) return;
+
     final speed = _previousSpeed ?? 1.0;
+
     _speedBoostActive = false;
     _previousSpeed = null;
+
     if (mounted) setState(() {});
+
     await controller.player.setPlaybackSpeed(speed);
   }
 
   Future<void> _handleDoubleTap() async {
     final wasPlaying = controller.player.playerStatus.isPlaying;
+
     await controller.togglePlayPause();
+
     if (!mounted) return;
+
     setState(() => _showPaused = wasPlaying);
   }
 
   Future<void> _shareVideo() async {
     final item = controller.currentItem;
     final bvid = item?.bvid;
+
     if (bvid == null || bvid.isEmpty) {
       SmartDialog.showToast('无法获取视频链接');
       return;
     }
+
     await ShareUtils.shareText(
       '${item?.title ?? '哔哩哔哩视频'}\nhttps://www.bilibili.com/video/$bvid',
     );
@@ -244,7 +256,9 @@ class _VideoPageState extends State<_VideoPage> {
   }
 
   void _closePanel() {
-    if (_panel != 0) _setPanel(0);
+    if (_panel != 0) {
+      _setPanel(0);
+    }
   }
 
   void _openReplyEditor({
@@ -252,14 +266,17 @@ class _VideoPageState extends State<_VideoPage> {
     void Function(ReplyInfo info)? onPosted,
   }) {
     final aid = controller.currentItem?.aid;
+
     if (aid == null) {
       SmartDialog.showToast('无法获取视频信息');
       return;
     }
+
     if (!controller.isLogin) {
       SmartDialog.showToast('请先登录');
       return;
     }
+
     Get.key.currentState
         ?.push(
       PublishRoute(
@@ -281,53 +298,40 @@ class _VideoPageState extends State<_VideoPage> {
     });
   }
 
+  // 使用 PiliPlus 原生评论详情路由。
+  // VideoReplyReplyPanel 本身继承 CommonSlidePage，
+  // 不能直接作为普通 BottomSheet 的 child 使用。
   void _openReplyReply(ReplyInfo item, int? id) {
-    final oid = item.oid.toInt();
-    final rpid = item.id.toInt();
-    final height = MediaQuery.sizeOf(context).height * 0.75;
-    showModalBottomSheet<void>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF1C1C1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
-      builder: (ctx) {
-        return SizedBox(
-          height: height,
-          child: VideoReplyReplyPanel(
-            id: id,
-            oid: oid,
-            rpid: rpid,
-            firstFloor: item.replyControl.isNote ? null : item,
-            replyType: 1,
-            isVideoDetail: true,
-            isNested: true,
-            upMid: Int64(controller.ownerMid.value),
-          ),
-        );
-      },
+    VideoReplyReplyPanel.toReply(
+      oid: item.oid.toInt(),
+      rootId: item.id.toInt(),
+      rpIdStr: id?.toString(),
+      type: 1,
     );
   }
 
   static const Color _panelDarkBg = Color(0xFF1C1C1E);
 
-  Color _panelBg(ColorScheme scheme, Brightness brightness) => _panelDarkBg;
+  Color _panelBg(ColorScheme scheme, Brightness brightness) =>
+      _panelDarkBg;
 
   Widget _buildSettingsPanel(ColorScheme scheme) {
     const onPanel = Colors.white;
+
     return Material(
       color: _panelDarkBg,
       elevation: 8,
       shadowColor: Colors.black54,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      borderRadius: const BorderRadius.vertical(
+        top: Radius.circular(16),
+      ),
       child: SafeArea(
         top: false,
         child: Obx(() {
           final speed = controller.player.playbackSpeed;
           final danmakuOn = controller.player.enableShowDanmaku.value;
           final mode = controller.playMode.value;
+
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
             child: Column(
@@ -372,6 +376,7 @@ class _VideoPageState extends State<_VideoPage> {
                   children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) {
                     final selected = (speed - s).abs() < 0.01;
                     final label = s == 1.0 ? '1.0x' : '${s}x';
+
                     return Material(
                       color: selected
                           ? scheme.primary
@@ -388,9 +393,7 @@ class _VideoPageState extends State<_VideoPage> {
                           child: Text(
                             label,
                             style: TextStyle(
-                              color: selected
-                                  ? scheme.onPrimary
-                                  : onPanel,
+                              color: selected ? scheme.onPrimary : onPanel,
                               fontSize: 14,
                               fontWeight: selected
                                   ? FontWeight.w700
@@ -424,6 +427,7 @@ class _VideoPageState extends State<_VideoPage> {
                     (VerticalFeedPlayMode.stop, '播完暂停'),
                   ].map((e) {
                     final selected = mode == e.$1;
+
                     return Material(
                       color: selected
                           ? scheme.primary
@@ -440,9 +444,7 @@ class _VideoPageState extends State<_VideoPage> {
                           child: Text(
                             e.$2,
                             style: TextStyle(
-                              color: selected
-                                  ? scheme.onPrimary
-                                  : onPanel,
+                              color: selected ? scheme.onPrimary : onPanel,
                               fontSize: 14,
                               fontWeight: selected
                                   ? FontWeight.w700
@@ -477,9 +479,12 @@ class _VideoPageState extends State<_VideoPage> {
 
   Widget _buildCoinPanel(ColorScheme scheme) {
     const onPanel = Colors.white;
+
     return Material(
       color: _panelDarkBg,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      borderRadius: const BorderRadius.vertical(
+        top: Radius.circular(16),
+      ),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -571,14 +576,20 @@ class _VideoPageState extends State<_VideoPage> {
   void _onSeekStart(double value) {
     controller.player.isSeeking.value = true;
     controller.player.seekPosition.value = value.round();
+
     _bufferTimer?.cancel();
-    if (mounted) setState(() => _showBuffering = true);
+
+    if (mounted) {
+      setState(() => _showBuffering = true);
+    }
   }
 
   void _onSeekEnd(double value) {
     controller.player.isSeeking.value = false;
     controller.player.seekTo(Duration(seconds: value.round()));
+
     _bufferTimer?.cancel();
+
     _bufferTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted && !controller.player.isBuffering.value) {
         setState(() => _showBuffering = false);
@@ -591,12 +602,15 @@ class _VideoPageState extends State<_VideoPage> {
     _panelWorker?.dispose();
     _indexWorker?.dispose();
     _bufferTimer?.cancel();
+
     if (_speedBoostActive) {
       controller.player.setPlaybackSpeed(_previousSpeed ?? 1.0);
     }
+
     if (controller.panelOpen.value) {
       controller.panelOpen.value = false;
     }
+
     super.dispose();
   }
 
@@ -611,9 +625,13 @@ class _VideoPageState extends State<_VideoPage> {
         final height = constraints.maxHeight;
         final landscape = width > height;
         final compact = height < 680 || landscape;
+
         final bottomInset = MediaQuery.paddingOf(context).bottom;
         final topInset = MediaQuery.paddingOf(context).top;
-        final progressBottom = bottomInset > 0 ? bottomInset + 8 : 24.0;
+
+        final progressBottom =
+            bottomInset > 0 ? bottomInset + 8 : 24.0;
+
         final danmakuTop = topInset + 48.0;
 
         return Stack(
@@ -633,23 +651,34 @@ class _VideoPageState extends State<_VideoPage> {
                       if (controller.currentIndex.value != widget.index) {
                         return const SizedBox.shrink();
                       }
+
                       final videoController = controller.videoController;
-                      if (!controller.ready.value || videoController == null) {
+
+                      if (!controller.ready.value ||
+                          videoController == null) {
                         return Center(
-                          child: CircularProgressIndicator(color: primary),
+                          child: CircularProgressIndicator(
+                            color: primary,
+                          ),
                         );
                       }
+
                       final vw = controller.player.width ?? 0;
                       final vh = controller.player.height ?? 0;
                       final videoLandscape = vw > vh;
+
                       final video = Video(
                         controller: videoController,
                         controls: NoVideoControls,
-                        fit: videoLandscape ? BoxFit.contain : BoxFit.cover,
+                        fit: videoLandscape
+                            ? BoxFit.contain
+                            : BoxFit.cover,
                       );
+
                       if (!videoLandscape) {
                         return IgnorePointer(child: video);
                       }
+
                       return IgnorePointer(
                         child: Transform.translate(
                           offset: Offset(0, -height * 0.08),
@@ -663,10 +692,13 @@ class _VideoPageState extends State<_VideoPage> {
                           controller.videoController == null) {
                         return const SizedBox.shrink();
                       }
+
                       final cid = controller.videos[widget.index].cid;
+
                       if (cid == null || cid <= 0) {
                         return const SizedBox.shrink();
                       }
+
                       return Positioned(
                         left: 0,
                         right: 0,
@@ -710,6 +742,7 @@ class _VideoPageState extends State<_VideoPage> {
                         final face = controller.ownerFace.value;
                         final name = controller.ownerName.value;
                         final fans = controller.ownerFans.value;
+
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -781,21 +814,20 @@ class _VideoPageState extends State<_VideoPage> {
                                                   controller.followed.value;
                                               final loading =
                                                   controller.following.value;
+
                                               return Material(
                                                 color: followed
                                                     ? Colors.white24
                                                     : primary,
                                                 borderRadius:
-                                                    BorderRadius.circular(
-                                                        14),
+                                                    BorderRadius.circular(14),
                                                 child: InkWell(
                                                   onTap: loading
                                                       ? null
                                                       : controller
                                                           .toggleFollow,
                                                   borderRadius:
-                                                      BorderRadius.circular(
-                                                          14),
+                                                      BorderRadius.circular(14),
                                                   child: Padding(
                                                     padding:
                                                         const EdgeInsets
@@ -809,10 +841,9 @@ class _VideoPageState extends State<_VideoPage> {
                                                             height: 12,
                                                             child:
                                                                 CircularProgressIndicator(
-                                                              strokeWidth:
-                                                                  2,
-                                                              color: Colors
-                                                                  .white,
+                                                              strokeWidth: 2,
+                                                              color:
+                                                                  Colors.white,
                                                             ),
                                                           )
                                                         : Text(
@@ -821,8 +852,8 @@ class _VideoPageState extends State<_VideoPage> {
                                                                 : '关注',
                                                             style:
                                                                 const TextStyle(
-                                                              color: Colors
-                                                                  .white,
+                                                              color:
+                                                                  Colors.white,
                                                               fontSize: 12,
                                                               fontWeight:
                                                                   FontWeight
@@ -865,7 +896,9 @@ class _VideoPageState extends State<_VideoPage> {
                     ),
                     Positioned(
                       right: 8,
-                      bottom: landscape ? 66 : (compact ? 92 : 112),
+                      bottom: landscape
+                          ? 66
+                          : (compact ? 92 : 112),
                       child: Obx(() {
                         return Column(
                           mainAxisSize: MainAxisSize.min,
@@ -965,26 +998,27 @@ class _VideoPageState extends State<_VideoPage> {
                     Obx(() {
                       final buffering =
                           controller.player.isBuffering.value;
+
                       if (buffering &&
                           controller.ready.value &&
                           !_showBuffering) {
-                        WidgetsBinding.instance
-                            .addPostFrameCallback((_) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (mounted) {
                             setState(() => _showBuffering = true);
                           }
                         });
                       } else if (!buffering && _showBuffering) {
-                        WidgetsBinding.instance
-                            .addPostFrameCallback((_) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (mounted) {
                             setState(() => _showBuffering = false);
                           }
                         });
                       }
+
                       if (!_showBuffering) {
                         return const SizedBox.shrink();
                       }
+
                       return const Center(
                         child: Text(
                           '加载中...',
@@ -1004,12 +1038,13 @@ class _VideoPageState extends State<_VideoPage> {
                         final player = controller.player;
                         final duration = player.duration.value;
                         final progress = player.progress;
-                        if (controller.currentIndex.value !=
-                                widget.index ||
+
+                        if (controller.currentIndex.value != widget.index ||
                             !controller.ready.value ||
                             duration <= 0) {
                           return const SizedBox(height: 18);
                         }
+
                         return Row(
                           children: [
                             Text(
@@ -1068,8 +1103,8 @@ class _VideoPageState extends State<_VideoPage> {
               ),
             ),
 
-            // 评论、投币、播放设置面板统一改为响应式。
-            // 当前视频索引变化时，旧页面的面板立即从树中移除。
+            // 评论、投币、播放设置面板。
+            // 评论面板仅在打开时创建，关闭后立即从 Widget 树移除。
             Obx(() {
               if (controller.currentIndex.value != widget.index) {
                 return const SizedBox.shrink();
@@ -1085,7 +1120,9 @@ class _VideoPageState extends State<_VideoPage> {
                       child: GestureDetector(
                         onTap: _closePanel,
                         behavior: HitTestBehavior.opaque,
-                        child: Container(color: Colors.black54),
+                        child: Container(
+                          color: Colors.black54,
+                        ),
                       ),
                     ),
                   ),
@@ -1117,14 +1154,21 @@ class _VideoPageState extends State<_VideoPage> {
                       ),
                     ),
                   ),
-                  IgnorePointer(
-                    ignoring: _panel != 3,
-                    child: AnimatedSlide(
-                      offset: _panel == 3
-                          ? Offset.zero
-                          : const Offset(0, 1),
+
+                  if (_panel == 3)
+                    TweenAnimationBuilder<Offset>(
+                      tween: Tween<Offset>(
+                        begin: const Offset(0, 1),
+                        end: Offset.zero,
+                      ),
                       duration: const Duration(milliseconds: 280),
                       curve: Curves.easeOutCubic,
+                      builder: (context, offset, child) {
+                        return FractionalTranslation(
+                          translation: offset,
+                          child: child,
+                        );
+                      },
                       child: Align(
                         alignment: Alignment.bottomCenter,
                         child: SizedBox(
@@ -1139,15 +1183,13 @@ class _VideoPageState extends State<_VideoPage> {
                             onReply: ([item]) => _openReplyEditor(
                               replyItem: item,
                               onPosted: (info) {
-                                _commentKey.currentState
-                                    ?.insertReply(info);
+                                _commentKey.currentState?.insertReply(info);
                               },
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               );
             }),
@@ -1166,6 +1208,7 @@ class _VideoPageState extends State<_VideoPage> {
                           _closePanel();
                           return;
                         }
+
                         if (Navigator.of(context).canPop()) {
                           Navigator.of(context).pop();
                         } else {
@@ -1265,66 +1308,147 @@ class _CommentSheet extends StatefulWidget {
 class _CommentSheetState extends State<_CommentSheet> {
   final List<ReplyInfo> _replies = [];
   final ScrollController _scrollController = ScrollController();
-  bool _loading = true;
+
+  bool _loading = false;
   String? _error;
+
   Int64? _cursorNext;
   bool _ended = false;
-  int? _lastAid;
+
+  // 每次请求都有独立编号。
+  // 旧请求返回时，如果编号已经过期，就忽略结果。
+  int _requestGeneration = 0;
+
+  int _activeAid = 0;
+
   Mode _mode = Mode.MAIN_LIST_HOT;
 
   @override
   void initState() {
     super.initState();
-    _lastAid = widget.aid;
-    if (widget.aid > 0) _load(refresh: true);
-  }
 
-  @override
-  void didUpdateWidget(covariant _CommentSheet oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.aid != _lastAid && widget.aid > 0) {
-      _lastAid = widget.aid;
+    _activeAid = widget.aid;
+
+    _scrollController.addListener(_onScroll);
+
+    if (widget.aid > 0) {
       _load(refresh: true);
     }
   }
 
   @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
+  void didUpdateWidget(covariant _CommentSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
 
-  Future<void> _load({bool refresh = false}) async {
-    if (widget.aid <= 0) return;
-    if (refresh) {
+    if (widget.aid != oldWidget.aid) {
+      // 视频发生变化时，使旧请求失效。
+      _requestGeneration++;
+
+      _activeAid = widget.aid;
+
       _replies.clear();
       _cursorNext = null;
       _ended = false;
+      _error = null;
+      _loading = false;
+
+      if (widget.aid > 0) {
+        _load(refresh: true);
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    // 页面销毁后，所有未完成请求都视为过期。
+    _requestGeneration++;
+
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients ||
+        _loading ||
+        _ended ||
+        widget.aid <= 0) {
+      return;
+    }
+
+    final position = _scrollController.position;
+
+    if (position.extentAfter < 500) {
+      _load();
+    }
+  }
+
+  Future<void> _load({bool refresh = false}) async {
+    final aid = widget.aid;
+
+    if (aid <= 0) return;
+
+    // 普通分页请求不允许重复启动。
+    // 刷新请求可以覆盖正在进行的旧请求。
+    if (_loading && !refresh) return;
+
+    if (!refresh && _ended) return;
+
+    final generation = ++_requestGeneration;
+    final requestMode = _mode;
+    final requestCursor = refresh ? null : _cursorNext;
+
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
       final res = await ReplyGrpc.mainList(
-        oid: widget.aid,
+        oid: aid,
         type: 1,
-        mode: _mode,
+        mode: requestMode,
         offset: null,
-        cursorNext: refresh ? null : _cursorNext,
+        cursorNext: requestCursor,
       );
-      if (!mounted) return;
+
+      // 防止旧视频、旧排序或旧刷新请求覆盖当前列表。
+      if (!mounted ||
+          generation != _requestGeneration ||
+          aid != widget.aid ||
+          aid != _activeAid) {
+        return;
+      }
+
       if (res case Success(:final response)) {
-        if (refresh) {
-          _replies
-            ..clear()
-            ..addAll(response.replies);
-        } else {
-          _replies.addAll(response.replies);
-        }
-        _cursorNext = response.cursor.next;
-        _ended = response.cursor.isEnd;
-        setState(() => _loading = false);
+        final incoming = response.replies;
+
+        setState(() {
+          if (refresh) {
+            // 刷新成功后才替换列表。
+            // 请求期间保留旧数据，避免评论区域闪空。
+            _replies
+              ..clear()
+              ..addAll(incoming);
+          } else {
+            // 分页时去重，防止接口返回重复评论。
+            final existingIds = _replies.map((e) => e.id).toSet();
+
+            for (final reply in incoming) {
+              if (existingIds.add(reply.id)) {
+                _replies.add(reply);
+              }
+            }
+          }
+
+          _cursorNext = response.cursor.next;
+          _ended = response.cursor.isEnd;
+
+          _loading = false;
+          _error = null;
+        });
       } else if (res case Error(:final errMsg)) {
         setState(() {
           _loading = false;
@@ -1332,7 +1456,8 @@ class _CommentSheetState extends State<_CommentSheet> {
         });
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
+
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -1346,18 +1471,22 @@ class _CommentSheetState extends State<_CommentSheet> {
           ? Mode.MAIN_LIST_TIME
           : Mode.MAIN_LIST_HOT;
     });
+
     _load(refresh: true);
   }
 
   void insertReply(ReplyInfo info) {
     if (!mounted) return;
+
     setState(() {
+      _replies.removeWhere((e) => e.id == info.id);
       _replies.insert(0, info);
     });
   }
 
   void removeReply(ReplyInfo item, int? subIndex) {
     if (!mounted) return;
+
     setState(() {
       _replies.removeWhere((e) => e.id == item.id);
     });
@@ -1365,41 +1494,31 @@ class _CommentSheetState extends State<_CommentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    const bg = Color(0xFF1C1C1E);
-
-    // 评论列表及 ReplyItemGrpc 都使用独立的深色配色，
-    // 避免外层应用主题为浅色时出现黑底白字、白底白字等混色。
-    final scheme = widget.scheme.copyWith(
-      brightness: Brightness.dark,
-      surface: bg,
-      onSurface: Colors.white,
-      onSurfaceVariant: Colors.white70,
-      outline: Colors.white54,
-      outlineVariant: Colors.white12,
-      onInverseSurface: const Color(0xFF303033),
-    );
-
+    // 评论区直接使用当前系统主题，不再强制深色。
     final baseTheme = Theme.of(context);
+    final scheme = baseTheme.colorScheme;
 
     return Theme(
       data: baseTheme.copyWith(
-        brightness: Brightness.dark,
+        brightness: baseTheme.brightness,
         colorScheme: scheme,
-        scaffoldBackgroundColor: bg,
-        cardColor: bg,
-        canvasColor: bg,
-        dividerColor: Colors.white12,
+        scaffoldBackgroundColor: scheme.surface,
+        cardColor: scheme.surface,
+        canvasColor: scheme.surface,
+        dividerColor: scheme.outlineVariant,
         textTheme: baseTheme.textTheme.apply(
-          bodyColor: Colors.white,
-          displayColor: Colors.white,
+          bodyColor: scheme.onSurface,
+          displayColor: scheme.onSurface,
         ),
         iconTheme: baseTheme.iconTheme.copyWith(
-          color: Colors.white70,
+          color: scheme.onSurfaceVariant,
         ),
       ),
       child: Material(
-        color: bg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(16),
+        ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
@@ -1410,7 +1529,7 @@ class _CommentSheetState extends State<_CommentSheet> {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -1431,12 +1550,12 @@ class _CommentSheetState extends State<_CommentSheet> {
                           ),
                         ),
                       ),
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           '评论',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.white,
+                            color: scheme.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1444,24 +1563,26 @@ class _CommentSheetState extends State<_CommentSheet> {
                       ),
                       IconButton(
                         onPressed: widget.onClose,
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.close,
-                          color: Colors.white70,
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Divider(
+                Divider(
                   height: 1,
-                  color: Colors.white12,
+                  color: scheme.outlineVariant,
                 ),
                 Expanded(
                   child: widget.aid <= 0
-                      ? const Center(
+                      ? Center(
                           child: Text(
                             '暂无视频信息',
-                            style: TextStyle(color: Colors.white54),
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                            ),
                           ),
                         )
                       : _loading && _replies.isEmpty
@@ -1477,8 +1598,8 @@ class _CommentSheetState extends State<_CommentSheet> {
                                     children: [
                                       Text(
                                         _error!,
-                                        style: const TextStyle(
-                                          color: Colors.white54,
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
                                         ),
                                       ),
                                       TextButton(
@@ -1501,26 +1622,30 @@ class _CommentSheetState extends State<_CommentSheet> {
                                       bottom: 88,
                                     ),
                                     itemCount: _replies.length +
-                                        (_ended ? 0 : 1),
+                                        (!_ended ? 1 : 0),
                                     itemBuilder: (context, index) {
                                       if (index >= _replies.length) {
-                                        if (!_loading) {
-                                          _load();
-                                        }
-                                        return const Padding(
-                                          padding: EdgeInsets.all(16),
+                                        return Padding(
+                                          padding: const EdgeInsets.all(16),
                                           child: Center(
-                                            child:
-                                                CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white54,
-                                            ),
+                                            child: _loading
+                                                ? const CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  )
+                                                : TextButton(
+                                                    onPressed: () => _load(),
+                                                    child: const Text(
+                                                      '加载更多',
+                                                    ),
+                                                  ),
                                           ),
                                         );
                                       }
-                                      final r = _replies[index];
+
+                                      final reply = _replies[index];
+
                                       return ReplyItemGrpc(
-                                        replyItem: r,
+                                        replyItem: reply,
                                         replyLevel: 1,
                                         upMid: widget.upMid,
                                         replyReply:
@@ -1579,6 +1704,7 @@ class _FeedIconButton extends StatelessWidget {
     final color = active
         ? (activeColor ?? Theme.of(context).colorScheme.primary)
         : Colors.white;
+
     return Material(
       color: Colors.transparent,
       child: InkResponse(
