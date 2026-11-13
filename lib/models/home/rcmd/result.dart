@@ -3,6 +3,7 @@ import 'package:PiliPlus/models/model_video.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/parse_string.dart';
+import 'package:PiliPlus/utils/extension/dimension_ext.dart';
 
 class RcmdVideoItemAppModel extends BaseRcmdVideoItemModel {
   int? get id => aid;
@@ -24,6 +25,17 @@ class RcmdVideoItemAppModel extends BaseRcmdVideoItemModel {
     goto = json['card_goto'];
     owner = RcmdOwner.fromJson(json, goto);
     rcmdReason = json['rcmd_reason'];
+    // App 推荐接口会把「竖屏」作为推荐原因返回，但原代码将其清除。
+    final playerArgs = json['player_args'];
+    if (playerArgs is Map) {
+      final width = playerArgs['width'] ?? playerArgs['player_width'];
+      final height = playerArgs['height'] ?? playerArgs['player_height'];
+      if (width is num && height is num) isVertical = height > width;
+    }
+    isVertical = isVertical || rcmdReason == '竖屏';
+    if (json['uri'] is String) {
+      isVertical = isVertical || (json['uri'] as String).isVerticalFromUri;
+    }
     if (rcmdReason == '竖屏') rcmdReason = null;
     //     json['bottom_rcmd_reason'] ??
     //     json['top_rcmd_reason'];
