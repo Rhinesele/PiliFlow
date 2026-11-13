@@ -102,7 +102,7 @@ class VideoReplyReplyPanel extends CommonSlidePage {
 class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
     with SingleTickerProviderStateMixin, CommonSlideMixin {
   late VideoReplyReplyController _controller;
-  late final _tag = Utils.makeHeroTag('${widget.rpid}${widget.dialog}');
+  late final _tag = Utils.makeHeroTag('\( {widget.rpid} \){widget.dialog}');
   Animation<Color?>? _colorAnimation;
 
   late final bool isDialogue = widget.dialog != null;
@@ -164,7 +164,14 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: <Widget>[
-                        Text(isDialogue ? '对话列表' : '评论详情'),
+                        Text(
+                          isDialogue ? '对话列表' : '评论详情',
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         IconButton(
                           tooltip: '关闭',
                           icon: const Icon(Icons.close, size: 20),
