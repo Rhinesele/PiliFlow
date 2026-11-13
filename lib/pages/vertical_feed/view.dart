@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/scaffold/mini_scaffold.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
@@ -218,6 +219,8 @@ class _VideoPageState extends State<_VideoPage> {
             _immersive = false;
             _seeking = false;
           });
+          // 切视频时清掉拖动状态，防止进度条卡死
+          controller.player.isSeeking.value = false;
         }
       }
     });
@@ -301,6 +304,8 @@ class _VideoPageState extends State<_VideoPage> {
       SmartDialog.showToast('无法打开视频详情');
       return;
     }
+    final wasPlaying = controller.player.playerStatus.isPlaying;
+    // 进入详情页不主动暂停；返回竖屏后若进入前在播则继续播
     PageUtils.toVideoPage(
       aid: item?.aid,
       bvid: bvid,
@@ -308,7 +313,12 @@ class _VideoPageState extends State<_VideoPage> {
       title: item?.title,
       cover: item?.cover,
       progress: controller.player.positionInMilliseconds,
-    );
+    )?.then((_) {
+      if (!mounted) return;
+      if (wasPlaying && !controller.player.playerStatus.isPlaying) {
+        controller.player.play();
+      }
+    });
   }
 
   void _openSendDanmaku() {
@@ -332,7 +342,8 @@ class _VideoPageState extends State<_VideoPage> {
             bvid: bvid,
             progress: controller.player.positionInMilliseconds,
             onSuccess: (danmakuModel) {
-              // 发送成功后由播放器弹幕层自行展示（若支持）
+              // 复用播放器弹幕控制器：自己发的弹幕会带边框高亮
+              controller.player.danmakuController?.addDanmaku(danmakuModel);
             },
           );
         },
@@ -757,28 +768,34 @@ class _VideoPageState extends State<_VideoPage> {
     controller.player.isSeeking.value = true;
     controller.player.seekPosition.value = value.round();
     _bufferTimer?.cancel();
-    _wasImmersiveBeforeSeek = _immersive;
     unawaited(_ensureVideoShot());
     if (mounted) {
       setState(() {
         _seeking = true;
         _seekPreviewValue = value;
-        _showBuffering = true;
-        _immersive = true;
+        // 拖动时只隐藏作者/标题等，不进入完整沉浸，避免卡死
       });
     }
   }
 
   void _onSeekUpdate(double value) {
-    controller.player.seekPosition.value = value.round();
-    if (mounted) {
-      setState(() => _seekPreviewValue = value);
+    final duration = controller.player.duration.value;
+    final v = value.clamp(0, duration.toDouble());
+    controller.player.seekPosition.value = v.round();
+    // 仅更新预览数值，避免频繁重建整个视频页
+    if (mounted && (_seekPreviewValue - v).abs() >= 0.2) {
+      setState(() => _seekPreviewValue = v);
+    } else {
+      _seekPreviewValue = v;
     }
   }
 
   void _onSeekEnd(double value) {
+    final duration = controller.player.duration.value;
+    final v = value.clamp(0, duration.toDouble()).round();
+    controller.player.seekPosition.value = v;
     controller.player.isSeeking.value = false;
-    controller.player.seekTo(Duration(seconds: value.round()));
+    controller.player.seekTo(Duration(seconds: v));
     _bufferTimer?.cancel();
     _bufferTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted && !controller.player.isBuffering.value) {
@@ -788,9 +805,7 @@ class _VideoPageState extends State<_VideoPage> {
     if (mounted) {
       setState(() {
         _seeking = false;
-        if (!_wasImmersiveBeforeSeek) {
-          _immersive = false;
-        }
+        _seekPreviewValue = v.toDouble();
       });
     }
   }
@@ -987,11 +1002,12 @@ class _VideoPageState extends State<_VideoPage> {
                           ),
                         ),
                       ),
-                      if (!_immersive)
+                      if (!_immersive && !_seeking)
                       Positioned(
                         left: 16,
                         right: 76,
-                        bottom: compact ? 66 : 76,
+                        // 抬高，避免与进度条/发弹幕栏重叠
+                        bottom: compact ? 118 : 128,
                         child: Obx(() {
                           final face = controller.ownerFace.value;
                           final name = controller.ownerName.value;
@@ -1153,7 +1169,7 @@ class _VideoPageState extends State<_VideoPage> {
                         right: 8,
                         bottom: landscape
                             ? 66
-                            : (compact ? 118 : 138),
+                            : (compact ? 128 : 148),
                         child: Obx(() {
                           return Column(
                             mainAxisSize: MainAxisSize.min,
@@ -1450,8 +1466,8 @@ class _VideoPageState extends State<_VideoPage> {
                                         ),
                                         child: Icon(
                                           danmakuOn
-                                              ? Icons.subtitles
-                                              : Icons.subtitles_off,
+                                              ? CustomIcons.dm_on
+                                              : CustomIcons.dm_off,
                                           color: Colors.white,
                                           size: 22,
                                         ),
