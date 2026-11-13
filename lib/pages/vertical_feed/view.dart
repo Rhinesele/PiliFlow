@@ -1,3 +1,5 @@
+文件路径：lib/pages/vertical_feed/view.dart
+
 import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -1009,8 +1011,8 @@ class _VideoPageState extends State<_VideoPage> {
                       Positioned(
                         left: 16,
                         right: 76,
-                        // 抬高，避免与进度条/发弹幕栏重叠
-                        bottom: compact ? 118 : 128,
+                        // 作者、头像、关注信息和标题紧贴进度条上方，避免过度上移。
+                        bottom: progressBottom + (compact ? 54 : 62),
                         child: Obx(() {
                           final face = controller.ownerFace.value;
                           final name = controller.ownerName.value;
