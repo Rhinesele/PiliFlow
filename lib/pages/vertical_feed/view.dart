@@ -1,5 +1,3 @@
-文件路径：lib/pages/vertical_feed/view.dart
-
 import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
