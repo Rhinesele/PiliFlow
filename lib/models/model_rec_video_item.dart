@@ -5,6 +5,8 @@ abstract class BaseRcmdVideoItemModel extends BaseVideoItemModel {
   String? goto;
   String? uri;
   String? rcmdReason;
+  /// Whether this recommendation is identified as a portrait video.
+  bool isVertical = false;
 
   // app推荐专属
   int? param;
@@ -29,6 +31,13 @@ class RcmdVideoItemModel extends BaseRcmdVideoItemModel {
     //     ? RcmdReason.fromJson(json["rcmd_reason"])
     //     : RcmdReason(content: '');
     rcmdReason = json["rcmd_reason"]?['content'];
+    final dimension = json['dimension'];
+    if (dimension is Map) {
+      final width = dimension['width'];
+      final height = dimension['height'];
+      if (width is num && height is num) isVertical = height > width;
+    }
+    isVertical = isVertical || rcmdReason == '竖屏';
   }
 
   // @override
