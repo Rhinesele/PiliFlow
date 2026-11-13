@@ -7,6 +7,8 @@ import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
     show Mode, ReplyInfo;
 import 'package:PiliPlus/grpc/reply.dart';
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/http/video.dart';
+import 'package:PiliPlus/models_new/video/video_shot/data.dart';
 import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/pages/danmaku/view.dart';
 import 'package:PiliPlus/pages/vertical_feed/controller.dart';
@@ -16,6 +18,8 @@ import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:PiliPlus/pages/video/reply_new/view.dart';
 import 'package:PiliPlus/pages/common/publish/publish_route.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
+import 'package:PiliPlus/pages/video/send_danmaku/view.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -172,6 +176,14 @@ class _VideoPageState extends State<_VideoPage> {
   bool _showBuffering = false;
   Timer? _bufferTimer;
 
+  bool _immersive = false;
+  bool _wasImmersiveBeforeSeek = false;
+  bool _seeking = false;
+  double _seekPreviewValue = 0;
+  VideoShotData? _shotData;
+  String? _shotBvid;
+  final Map<String, VideoShotData> _shotCache = {};
+
   int _panel = 0;
   bool _coinAlsoLike = true;
 
@@ -200,8 +212,12 @@ class _VideoPageState extends State<_VideoPage> {
     _indexWorker = ever(controller.currentIndex, (index) {
       if (index != widget.index) {
         _closeReplyReplyPanel();
-        if (_panel != 0 && mounted) {
-          setState(() => _panel = 0);
+        if (mounted) {
+          setState(() {
+            _panel = 0;
+            _immersive = false;
+            _seeking = false;
+          });
         }
       }
     });
@@ -275,6 +291,55 @@ class _VideoPageState extends State<_VideoPage> {
     }
     _setPanel(3);
   }
+
+
+  void _openVideoDetail() {
+    final item = controller.currentItem;
+    final bvid = item?.bvid;
+    final cid = item?.cid;
+    if (bvid == null || bvid.isEmpty || cid == null) {
+      SmartDialog.showToast('无法打开视频详情');
+      return;
+    }
+    PageUtils.toVideoPage(
+      aid: item?.aid,
+      bvid: bvid,
+      cid: cid,
+      title: item?.title,
+      cover: item?.cover,
+      progress: controller.player.positionInMilliseconds,
+    );
+  }
+
+  void _openSendDanmaku() {
+    final item = controller.currentItem;
+    final bvid = item?.bvid;
+    final cid = item?.cid;
+    if (bvid == null || bvid.isEmpty || cid == null) {
+      SmartDialog.showToast('无法发送弹幕');
+      return;
+    }
+    if (!controller.isLogin) {
+      SmartDialog.showToast('请先登录');
+      return;
+    }
+
+    Get.key.currentState?.push(
+      PublishRoute(
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return SendDanmakuPanel(
+            cid: cid,
+            bvid: bvid,
+            progress: controller.player.positionInMilliseconds,
+            onSuccess: (danmakuModel) {
+              // 发送成功后由播放器弹幕层自行展示（若支持）
+            },
+          );
+        },
+      ),
+    );
+  }
+
 
   void _closePanel() {
     if (_panel != 0) {
@@ -425,7 +490,6 @@ class _VideoPageState extends State<_VideoPage> {
         top: false,
         child: Obx(() {
           final speed = controller.player.playbackSpeed;
-          final danmakuOn = controller.player.enableShowDanmaku.value;
           final mode = controller.playMode.value;
 
           return Padding(
@@ -552,19 +616,7 @@ class _VideoPageState extends State<_VideoPage> {
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    '显示弹幕',
-                    style: TextStyle(color: onPanel),
-                  ),
-                  value: danmakuOn,
-                  activeThumbColor: scheme.primary,
-                  onChanged: (v) {
-                    controller.player.enableShowDanmaku.value = v;
-                  },
-                ),
+
               ],
             ),
           );
@@ -669,28 +721,122 @@ class _VideoPageState extends State<_VideoPage> {
     return '$n粉丝';
   }
 
+  void _toggleImmersive() {
+    if (_panel != 0) {
+      _closePanel();
+      return;
+    }
+    setState(() => _immersive = !_immersive);
+  }
+
+  Future<void> _ensureVideoShot() async {
+    final item = controller.currentItem;
+    final bvid = item?.bvid;
+    final cid = item?.cid;
+    if (bvid == null || bvid.isEmpty || cid == null) return;
+    if (_shotCache.containsKey(bvid)) {
+      _shotData = _shotCache[bvid];
+      _shotBvid = bvid;
+      return;
+    }
+    try {
+      final res = await VideoHttp.videoshot(bvid: bvid, cid: cid);
+      if (res is Success<VideoShotData>) {
+        _shotCache[bvid] = res.response;
+        if (mounted && controller.currentItem?.bvid == bvid) {
+          setState(() {
+            _shotData = res.response;
+            _shotBvid = bvid;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
   void _onSeekStart(double value) {
     controller.player.isSeeking.value = true;
     controller.player.seekPosition.value = value.round();
-
     _bufferTimer?.cancel();
-
+    _wasImmersiveBeforeSeek = _immersive;
+    unawaited(_ensureVideoShot());
     if (mounted) {
-      setState(() => _showBuffering = true);
+      setState(() {
+        _seeking = true;
+        _seekPreviewValue = value;
+        _showBuffering = true;
+        _immersive = true;
+      });
+    }
+  }
+
+  void _onSeekUpdate(double value) {
+    controller.player.seekPosition.value = value.round();
+    if (mounted) {
+      setState(() => _seekPreviewValue = value);
     }
   }
 
   void _onSeekEnd(double value) {
     controller.player.isSeeking.value = false;
     controller.player.seekTo(Duration(seconds: value.round()));
-
     _bufferTimer?.cancel();
-
     _bufferTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted && !controller.player.isBuffering.value) {
         setState(() => _showBuffering = false);
       }
     });
+    if (mounted) {
+      setState(() {
+        _seeking = false;
+        if (!_wasImmersiveBeforeSeek) {
+          _immersive = false;
+        }
+      });
+    }
+  }
+
+  Widget? _buildSeekThumb(double seconds, double maxW) {
+    final data = _shotData;
+    if (data == null || data.image.isEmpty || data.index.isEmpty) {
+      return null;
+    }
+    int frame = 0;
+    for (int i = 0; i < data.index.length; i++) {
+      if (data.index[i] > seconds) break;
+      frame = i;
+    }
+    final per = data.totalPerImage;
+    if (per <= 0) return null;
+    final imageIndex = frame ~/ per;
+    final local = frame % per;
+    if (imageIndex < 0 || imageIndex >= data.image.length) return null;
+    final col = local % data.imgXLen;
+    final row = local ~/ data.imgXLen;
+    final cellW = data.imgXSize;
+    final cellH = data.imgYSize;
+    if (cellW <= 0 || cellH <= 0) return null;
+    final scale = maxW / cellW;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: maxW,
+        height: cellH * scale,
+        child: FittedBox(
+          fit: BoxFit.none,
+          alignment: Alignment(
+            data.imgXLen <= 1 ? 0 : -1 + (col * 2 + 1) / data.imgXLen,
+            data.imgYLen <= 1 ? 0 : -1 + (row * 2 + 1) / data.imgYLen,
+          ),
+          child: Image.network(
+            data.image[imageIndex],
+            width: cellW * data.imgXLen * scale,
+            height: cellH * data.imgYLen * scale,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -733,7 +879,7 @@ class _VideoPageState extends State<_VideoPage> {
         final topInset = MediaQuery.paddingOf(context).top;
 
         final progressBottom =
-            bottomInset > 0 ? bottomInset + 8 : 24.0;
+            bottomInset > 0 ? bottomInset + 10 : 20.0;
 
         final danmakuTop = topInset + 48.0;
 
@@ -745,6 +891,7 @@ class _VideoPageState extends State<_VideoPage> {
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
+                  onTap: _toggleImmersive,
                   onDoubleTap: _handleDoubleTap,
                   onLongPressStart: (_) => _startFastPlayback(),
                   onLongPressEnd: (_) => _stopFastPlayback(),
@@ -821,6 +968,7 @@ class _VideoPageState extends State<_VideoPage> {
                           ),
                         );
                       }),
+                      if (!_immersive)
                       Positioned.fill(
                         child: IgnorePointer(
                           child: DecoratedBox(
@@ -839,6 +987,7 @@ class _VideoPageState extends State<_VideoPage> {
                           ),
                         ),
                       ),
+                      if (!_immersive)
                       Positioned(
                         left: 16,
                         right: 76,
@@ -999,11 +1148,12 @@ class _VideoPageState extends State<_VideoPage> {
                           );
                         }),
                       ),
+                      if (!_immersive)
                       Positioned(
                         right: 8,
                         bottom: landscape
                             ? 66
-                            : (compact ? 92 : 112),
+                            : (compact ? 118 : 138),
                         child: Obx(() {
                           return Column(
                             mainAxisSize: MainAxisSize.min,
@@ -1136,6 +1286,61 @@ class _VideoPageState extends State<_VideoPage> {
                           ),
                         );
                       }),
+                      if (_seeking)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: progressBottom + 36,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Builder(
+                                builder: (_) {
+                                  final thumb = _buildSeekThumb(
+                                    _seekPreviewValue,
+                                    160,
+                                  );
+                                  if (thumb != null) return thumb;
+                                  final cover =
+                                      controller.currentItem?.cover;
+                                  if (cover == null || cover.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(
+                                      cover,
+                                      width: 160,
+                                      height: 90,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const SizedBox.shrink(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              Obx(() {
+                                final duration =
+                                    controller.player.duration.value;
+                                return Text(
+                                  '${_formatDuration(_seekPreviewValue.round())} / ${_formatDuration(duration)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    shadows: [
+                                      Shadow(
+                                        color: Colors.black54,
+                                        blurRadius: 4,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
                       Positioned(
                         left: 12,
                         right: 12,
@@ -1144,61 +1349,138 @@ class _VideoPageState extends State<_VideoPage> {
                           final player = controller.player;
                           final duration = player.duration.value;
                           final progress = player.progress;
+                          final buffered = player.buffered.value;
+                          final danmakuOn =
+                              player.enableShowDanmaku.value;
 
                           if (controller.currentIndex.value != widget.index ||
                               !controller.ready.value ||
                               duration <= 0) {
-                            return const SizedBox(height: 18);
+                            return const SizedBox(height: 52);
                           }
 
-                          return Row(
+                          final slider = SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 2,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 5,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 10,
+                              ),
+                              activeTrackColor: Colors.white,
+                              inactiveTrackColor: Colors.white24,
+                              secondaryActiveTrackColor: Colors.white38,
+                              thumbColor: Colors.white,
+                            ),
+                            child: Slider(
+                              min: 0,
+                              max: duration.toDouble(),
+                              value: (_seeking
+                                      ? _seekPreviewValue
+                                      : progress)
+                                  .clamp(0, duration)
+                                  .toDouble(),
+                              secondaryTrackValue: buffered
+                                  .clamp(0, duration)
+                                  .toDouble(),
+                              onChangeStart: _onSeekStart,
+                              onChanged: _onSeekUpdate,
+                              onChangeEnd: _onSeekEnd,
+                            ),
+                          );
+
+                          if (_immersive) {
+                            return slider;
+                          }
+
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                _formatDuration(progress),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: SliderTheme(
-                                  data: SliderTheme.of(context).copyWith(
-                                    trackHeight: 2,
-                                    thumbShape:
-                                        const RoundSliderThumbShape(
-                                      enabledThumbRadius: 6,
+                              slider,
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Material(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.18,
+                                      ),
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: InkWell(
+                                        onTap: _openSendDanmaku,
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 10,
+                                          ),
+                                          child: Text(
+                                            '发个友善的弹幕见证当下',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.75,
+                                              ),
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    overlayShape:
-                                        const RoundSliderOverlayShape(
-                                      overlayRadius: 12,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Material(
+                                    color: Colors.white.withValues(
+                                      alpha: 0.18,
                                     ),
-                                    activeTrackColor: primary,
-                                    inactiveTrackColor: Colors.white24,
-                                    thumbColor: Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: InkWell(
+                                      onTap: () {
+                                        player.enableShowDanmaku.value =
+                                            !danmakuOn;
+                                      },
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        child: Icon(
+                                          danmakuOn
+                                              ? Icons.subtitles
+                                              : Icons.subtitles_off,
+                                          color: Colors.white,
+                                          size: 22,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                  child: Slider(
-                                    min: 0,
-                                    max: duration.toDouble(),
-                                    value: progress
-                                        .clamp(0, duration)
-                                        .toDouble(),
-                                    onChangeStart: _onSeekStart,
-                                    onChanged: (value) {
-                                      player.seekPosition.value =
-                                          value.round();
-                                    },
-                                    onChangeEnd: _onSeekEnd,
+                                  const SizedBox(width: 6),
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: _openVideoDetail,
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 8,
+                                        ),
+                                        child: Text(
+                                          '详情页',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _formatDuration(duration),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                ),
+                                ],
                               ),
                             ],
                           );
