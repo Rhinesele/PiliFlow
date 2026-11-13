@@ -180,6 +180,13 @@ List<SettingsModel> get playSettings => [
     onTap: (_, _) => Get.to(const FullScreenScSize()),
   ),
   const SwitchModel(
+    title: '直接进入竖屏模式',
+    subtitle: '若带有竖屏标志，则直接使用竖屏模式播放',
+    leading: Icon(Icons.stay_current_portrait_outlined),
+    setKey: SettingBoxKey.directVerticalMode,
+    defaultVal: false,
+  ),
+  const SwitchModel(
     title: '竖屏扩大展示',
     subtitle: '小屏竖屏视频宽高比由16:9扩大至1:1（不支持收起）；横屏适配时，扩大至9:16',
     leading: Icon(Icons.expand_outlined),
