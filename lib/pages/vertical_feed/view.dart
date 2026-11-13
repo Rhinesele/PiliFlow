@@ -306,19 +306,22 @@ class _VideoPageState extends State<_VideoPage> {
     }
     final wasPlaying = controller.player.playerStatus.isPlaying;
     // 进入详情页不主动暂停；返回竖屏后若进入前在播则继续播
-    PageUtils.toVideoPage(
+    final nav = PageUtils.toVideoPage(
       aid: item?.aid,
       bvid: bvid,
       cid: cid,
       title: item?.title,
       cover: item?.cover,
       progress: controller.player.positionInMilliseconds,
-    )?.then((_) {
-      if (!mounted) return;
-      if (wasPlaying && !controller.player.playerStatus.isPlaying) {
-        controller.player.play();
-      }
-    });
+    );
+    if (nav != null) {
+      nav.then((_) {
+        if (!mounted) return;
+        if (wasPlaying && !controller.player.playerStatus.isPlaying) {
+          controller.player.play();
+        }
+      });
+    }
   }
 
   void _openSendDanmaku() {
@@ -780,7 +783,7 @@ class _VideoPageState extends State<_VideoPage> {
 
   void _onSeekUpdate(double value) {
     final duration = controller.player.duration.value;
-    final v = value.clamp(0, duration.toDouble());
+    final v = value.clamp(0, duration.toDouble()).toDouble();
     controller.player.seekPosition.value = v.round();
     // 仅更新预览数值，避免频繁重建整个视频页
     if (mounted && (_seekPreviewValue - v).abs() >= 0.2) {
@@ -792,7 +795,7 @@ class _VideoPageState extends State<_VideoPage> {
 
   void _onSeekEnd(double value) {
     final duration = controller.player.duration.value;
-    final v = value.clamp(0, duration.toDouble()).round();
+    final v = value.clamp(0, duration.toDouble()).toDouble().round();
     controller.player.seekPosition.value = v;
     controller.player.isSeeking.value = false;
     controller.player.seekTo(Duration(seconds: v));
