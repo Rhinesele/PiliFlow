@@ -15,6 +15,8 @@ import 'package:PiliPlus/utils/extension/dimension_ext.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
+import 'package:PiliPlus/utils/storage.dart';
+import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
@@ -38,11 +40,11 @@ class VideoCardV extends StatelessWidget {
       case 'av':
         var bvid = videoItem.bvid ?? IdUtils.av2bv(videoItem.aid!);
         var cid = videoItem.cid;
-        bool isVertical = false;
+        bool isVertical = videoItem.isVertical;
         Dimension? dimension;
         if (videoItem is RcmdVideoItemAppModel) {
           if (videoItem.uri case final uri?) {
-            isVertical = uri.isVerticalFromUri;
+            isVertical = isVertical || uri.isVerticalFromUri;
           }
         }
         if (cid == null) {
@@ -59,7 +61,12 @@ class VideoCardV extends StatelessWidget {
             cid: cid,
             cover: videoItem.cover,
             title: videoItem.title,
-            isVertical: isVertical,
+            isVertical: isVertical &&
+                GStorage.setting.get(
+                  SettingBoxKey.directVerticalMode,
+                  defaultValue: false,
+                ) ==
+                true,
             dimension: dimension,
           );
         }
@@ -113,6 +120,17 @@ class VideoCardV extends StatelessWidget {
                             height: maxHeight,
                             borderRadius: const .vertical(top: .circular(12)),
                           ),
+                          if (videoItem.goto == 'av' && videoItem.isVertical)
+                            const Positioned(
+                              left: 7,
+                              bottom: 6,
+                              child: PBadge(
+                                text: '竖屏',
+                                size: .small,
+                                type: .secondary,
+                                isStack: false,
+                              ),
+                            ),
                           if (videoItem.duration > 0)
                             PBadge(
                               bottom: 6,
