@@ -335,7 +335,7 @@ class _VideoPageState extends State<_VideoPage> {
       sheet = miniScaffold.showBottomSheet(
         (context) {
           final baseTheme = Theme.of(context);
-          const replyBackground = Color(0xFF111113);
+          const replyBackground = Color(0xFF1A1B20);
           final replyColorScheme = baseTheme.colorScheme.copyWith(
             brightness: Brightness.dark,
             surface: replyBackground,
@@ -1618,8 +1618,8 @@ class _CommentSheetState extends State<_CommentSheet> {
     // 一级评论固定使用深色主题，不跟随手机系统的浅色/深色切换。
     // 与原版二级回复面板保持同一套深色底色。
     // 一级评论的列表、卡片、弹出层不再使用偏灰的 surface 色。
-    const panelBackground = Color(0xFF111113);
-    const panelSurface = Color(0xFF111113);
+    const panelBackground = Color(0xFF1A1B20);
+    const panelSurface = Color(0xFF1A1B20);
     const panelDivider = Color(0xFF29292D);
 
     final darkScheme = ColorScheme.fromSeed(
@@ -1681,12 +1681,10 @@ class _CommentSheetState extends State<_CommentSheet> {
 
     // 直接沿用系统二级回复 BottomSheet 的形状设置；未自定义时，
     // 按 Material 2/3 的默认顶部圆角分别回退，避免两层圆角不一致。
-    final panelShape = darkTheme.bottomSheetTheme.shape ??
-        RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(darkTheme.useMaterial3 ? 28 : 16),
-          ),
-        );
+    // 一级评论与二级统一为直角，背景 #1A1B20
+    const panelShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.zero,
+    );
 
     // 评论项使用稳定 ID，配合 SuperSliverList 的 ListController，
     // 刷新/排序时尽量复用已有列表元素，减少整屏闪动。
