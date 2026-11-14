@@ -7,8 +7,8 @@ import 'package:PiliPlus/common/widgets/scaffold/mini_scaffold.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
     show Mode, ReplyInfo;
 import 'package:PiliPlus/grpc/reply.dart';
+import 'package:PiliPlus/common/widgets/progress_bar/audio_video_progress_bar.dart';
 import 'package:PiliPlus/http/loading_state.dart';
-import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models_new/video/video_shot/data.dart';
 import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/pages/danmaku/view.dart';
@@ -21,6 +21,9 @@ import 'package:PiliPlus/pages/video/reply_new/view.dart';
 import 'package:PiliPlus/pages/common/publish/publish_route.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/pages/video/send_danmaku/view.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart';
+import 'package:PiliPlus/plugin/pl_player/view/view.dart'
+    show buildSeekPreviewWidget;
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -179,12 +182,9 @@ class _VideoPageState extends State<_VideoPage> {
 
   bool _immersive = false;
   double _lastTapGlobalY = -1;
-  bool _wasImmersiveBeforeSeek = false;
   bool _seeking = false;
-  double _seekPreviewValue = 0;
-  VideoShotData? _shotData;
-  String? _shotBvid;
-  final Map<String, VideoShotData> _shotCache = {};
+  Future<void>? _seekPreviewLoadFuture;
+  int _lastSeekPreviewSecond = 0;
 
   int _panel = 0;
   bool _coinAlsoLike = true;
@@ -220,8 +220,11 @@ class _VideoPageState extends State<_VideoPage> {
             _immersive = false;
             _seeking = false;
           });
-          // 切视频时清掉拖动状态，防止进度条卡死
-          controller.player.isSeeking.value = false;
+          // 切视频时结束正在进行的拖动，并清除原播放器的预览状态。
+          if (controller.player.isSeeking.value) {
+            controller.player.onSeekEnd();
+          }
+          controller.player.showPreview.value = false;
         }
       }
     });
@@ -744,139 +747,127 @@ class _VideoPageState extends State<_VideoPage> {
     setState(() => _immersive = !_immersive);
   }
 
-  Future<void> _ensureVideoShot() async {
-    final item = controller.currentItem;
-    final bvid = item?.bvid;
-    final cid = item?.cid;
-    if (bvid == null || bvid.isEmpty || cid == null) return;
-    if (_shotCache.containsKey(bvid)) {
-      _shotData = _shotCache[bvid];
-      _shotBvid = bvid;
+  void _requestNativeSeekPreview(int seconds) {
+    final player = controller.player;
+    if (!player.showSeekPreview) return;
+
+    _lastSeekPreviewSecond = seconds;
+    if (player.videoShot is Success<VideoShotData>) {
+      player.updatePreviewIndex(seconds);
       return;
     }
+
+    // 只在第一次拖动时加载原播放器的预览数据；加载完成后用最后一次
+    // 拖动位置更新帧索引，避免用户快速拖动时请求尚未完成而整段不显示。
+    if (player.videoShot != null || _seekPreviewLoadFuture != null) return;
+
+    final requestBvid = controller.currentItem?.bvid;
+    _seekPreviewLoadFuture = _loadNativeSeekPreview(player, requestBvid);
+  }
+
+  Future<void> _loadNativeSeekPreview(
+    PlPlayerController player,
+    String? requestBvid,
+  ) async {
     try {
-      final res = await VideoHttp.videoshot(bvid: bvid, cid: cid);
-      if (res is Success<VideoShotData>) {
-        _shotCache[bvid] = res.response;
-        if (mounted && controller.currentItem?.bvid == bvid) {
-          setState(() {
-            _shotData = res.response;
-            _shotBvid = bvid;
-          });
-        }
+      await player.getVideoShot();
+      if (!mounted ||
+          controller.currentItem?.bvid != requestBvid ||
+          !player.isSeeking.value) {
+        return;
       }
-    } catch (_) {}
+      if (player.videoShot is Success<VideoShotData>) {
+        player.updatePreviewIndex(_lastSeekPreviewSecond);
+      } else {
+        // 请求失败时清掉失败状态，下一次拖动可以重新加载。
+        player.videoShot = null;
+      }
+    } catch (_) {
+      player.videoShot = null;
+    } finally {
+      _seekPreviewLoadFuture = null;
+    }
   }
 
   void _onSeekStart(double value) {
-    controller.player.isSeeking.value = true;
-    controller.player.seekPosition.value = value.round();
+    final player = controller.player;
+    final seconds = value.round().clamp(0, player.duration.value).toInt();
+    player.onSeekStart(seconds);
     _bufferTimer?.cancel();
-    unawaited(_ensureVideoShot());
     if (mounted) {
-      setState(() {
-        _seeking = true;
-        _seekPreviewValue = value;
-        // 拖动时只隐藏作者/标题等，不进入完整沉浸，避免卡死
-      });
+      setState(() => _seeking = true);
     }
+    _requestNativeSeekPreview(seconds);
   }
 
   void _onSeekUpdate(double value) {
-    final duration = controller.player.duration.value;
-    final v = value.clamp(0, duration.toDouble()).toDouble();
-    controller.player.seekPosition.value = v.round();
-    // 仅更新预览数值，避免频繁重建整个视频页
-    if (mounted && (_seekPreviewValue - v).abs() >= 0.2) {
-      setState(() => _seekPreviewValue = v);
-    } else {
-      _seekPreviewValue = v;
+    final player = controller.player;
+    final seconds = value.clamp(0, player.duration.value.toDouble()).toInt();
+    player.seekPosition.value = seconds;
+    _requestNativeSeekPreview(seconds);
+  }
+
+  void _commitSeek(Duration target) {
+    final player = controller.player;
+    if (player.isSeeking.value) {
+      player.onSeekEnd();
+    }
+    player.position.value = target.inSeconds;
+    unawaited(player.seekTo(target, isSeek: false));
+
+    _bufferTimer?.cancel();
+    _bufferTimer = Timer(const Duration(milliseconds: 350), () {
+      if (mounted && !player.isBuffering.value) {
+        setState(() => _showBuffering = false);
+      }
+    });
+    if (mounted && _seeking) {
+      setState(() => _seeking = false);
     }
   }
 
   void _onSeekEnd(double value) {
-    final duration = controller.player.duration.value;
-    final v = value.clamp(0, duration.toDouble()).toDouble().round();
-    controller.player.seekPosition.value = v;
-    controller.player.isSeeking.value = false;
-    // 竖屏信息流的拖动跳转不等待 buffer.first：部分流媒体在拖动后
-    // 不一定及时产生新的缓冲事件，等待它会表现为跳转延迟甚至无响应。
-    // isSeek:false 会直接调用底层播放器 seek，仍复用 PiliPlus 原生控制器。
-    unawaited(
-      controller.player.seekTo(
-        Duration(seconds: v),
-        isSeek: false,
-      ),
-    );
+    final player = controller.player;
+    final seconds = value.clamp(0, player.duration.value.toDouble()).toInt();
+    player.seekPosition.value = seconds;
+    _commitSeek(Duration(seconds: seconds));
+  }
+
+  void _onProgressDragStart(ThumbDragDetails details) {
+    final player = controller.player;
+    player.onSeekStart(details.seconds);
     _bufferTimer?.cancel();
-    _bufferTimer = Timer(const Duration(milliseconds: 350), () {
-      if (mounted && !controller.player.isBuffering.value) {
-        setState(() => _showBuffering = false);
-      }
-    });
     if (mounted) {
-      setState(() {
-        _seeking = false;
-        _seekPreviewValue = v.toDouble();
-      });
+      setState(() => _seeking = true);
+    }
+    _requestNativeSeekPreview(details.seconds);
+  }
+
+  void _onProgressDragUpdate(ThumbDragDetails details) {
+    final player = controller.player;
+    final seconds = details.seconds
+        .clamp(0, player.duration.value)
+        .toInt();
+    player.seekPosition.value = seconds;
+    _requestNativeSeekPreview(seconds);
+  }
+
+  void _onProgressDragEnd() {
+    final player = controller.player;
+    if (player.isSeeking.value) {
+      player.onSeekEnd();
+    }
+    if (mounted && _seeking) {
+      setState(() => _seeking = false);
     }
   }
 
-  Widget? _buildSeekThumb(double seconds, double maxW) {
-    final data = _shotData;
-    if (data == null || data.image.isEmpty || data.index.isEmpty) {
-      return null;
-    }
-    int frame = 0;
-    for (int i = 0; i < data.index.length; i++) {
-      if (data.index[i] > seconds) break;
-      frame = i;
-    }
-    final per = data.totalPerImage;
-    if (per <= 0) return null;
-    final imageIndex = frame ~/ per;
-    final local = frame % per;
-    if (imageIndex < 0 || imageIndex >= data.image.length) return null;
-    final col = local % data.imgXLen;
-    final row = local ~/ data.imgXLen;
-    final cellW = data.imgXSize;
-    final cellH = data.imgYSize;
-    if (cellW <= 0 || cellH <= 0) return null;
-    // B站视频预览图是由多帧组成的雪碧图。
-    // 使用固定视口和 OverflowBox 精确裁出单帧，避免
-    // FittedBox 在不同屏幕比例下重新缩放整张雪碧图，导致错帧或裁切异常。
-    final frameWidth = maxW;
-    final frameHeight = frameWidth * cellH / cellW;
-    final sheetWidth = frameWidth * data.imgXLen;
-    final sheetHeight = frameHeight * data.imgYLen;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: SizedBox(
-        width: frameWidth,
-        height: frameHeight,
-        child: ClipRect(
-          child: OverflowBox(
-            alignment: Alignment(
-              data.imgXLen <= 1 ? 0 : -1 + (col * 2 + 1) / data.imgXLen,
-              data.imgYLen <= 1 ? 0 : -1 + (row * 2 + 1) / data.imgYLen,
-            ),
-            minWidth: sheetWidth,
-            maxWidth: sheetWidth,
-            minHeight: sheetHeight,
-            maxHeight: sheetHeight,
-            child: Image.network(
-              data.image[imageIndex],
-              width: sheetWidth,
-              height: sheetHeight,
-              fit: BoxFit.fill,
-              filterQuality: FilterQuality.medium,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            ),
-          ),
-        ),
-      ),
-    );
+  void _onProgressSeek(int milliseconds) {
+    final player = controller.player;
+    final targetMs = milliseconds
+        .clamp(0, player.duration.value * 1000)
+        .toInt();
+    _commitSeek(Duration(milliseconds: targetMs));
   }
 
   @override
@@ -935,8 +926,8 @@ class _VideoPageState extends State<_VideoPage> {
                     _lastTapGlobalY = details.globalPosition.dy;
                   },
                   onTap: () {
-                    // 底部进度条区域由 Slider 独占交互，不把点按误判为
-                    // 全屏单击，从而避免切换沉浸模式并重建正在交互的 Slider。
+                    // 底部进度条区域不切换沉浸模式，避免点击进度条时
+                    // 触发整屏手势并重建正在交互的原生 ProgressBar。
                     final screenHeight = MediaQuery.sizeOf(context).height;
                     final bottomInset = MediaQuery.paddingOf(context).bottom;
                     final progressBottom =
@@ -1342,59 +1333,50 @@ class _VideoPageState extends State<_VideoPage> {
                           ),
                         );
                       }),
-                      if (_seeking)
+                      if (_seeking && controller.player.showSeekPreview)
                         Positioned(
                           left: 0,
                           right: 0,
-                          bottom: progressBottom + 36,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Builder(
-                                builder: (_) {
-                                  final thumb = _buildSeekThumb(
-                                    _seekPreviewValue,
-                                    160,
-                                  );
-                                  if (thumb != null) return thumb;
-                                  final cover =
-                                      controller.currentItem?.cover;
-                                  if (cover == null || cover.isEmpty) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(
-                                      cover,
-                                      width: 160,
-                                      height: 90,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) =>
-                                          const SizedBox.shrink(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(height: 8),
-                              Obx(() {
-                                final duration =
-                                    controller.player.duration.value;
-                                return Text(
-                                  '${_formatDuration(_seekPreviewValue.round())} / ${_formatDuration(duration)}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.black54,
-                                        blurRadius: 4,
+                          bottom: progressBottom + 32,
+                          height: 128,
+                          child: IgnorePointer(
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                buildSeekPreviewWidget(
+                                  controller.player,
+                                  width,
+                                  height,
+                                  () => mounted,
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  child: Obx(() {
+                                    final player = controller.player;
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 9,
+                                        vertical: 4,
                                       ),
-                                    ],
-                                  ),
-                                );
-                              }),
-                            ],
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.72,
+                                        ),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '${_formatDuration(player.seekPosition.value)} / ${_formatDuration(player.duration.value)}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       Positioned(
@@ -1412,7 +1394,40 @@ class _VideoPageState extends State<_VideoPage> {
                           if (controller.currentIndex.value != widget.index ||
                               !controller.ready.value ||
                               duration <= 0) {
-                            return const SizedBox(height: 52);
+                            return const SizedBox(height: 48);
+                          }
+
+                          final immersiveProgressBar = SizedBox(
+                            // 沉浸模式使用 PiliPlus 原生 ProgressBar。
+                            // 保持 48dp 外层高度，使进度线垂直位置与原 Slider 一致。
+                            height: 48,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 5),
+                              child: ProgressBar(
+                                key: const ValueKey('vertical-feed-progress-bar'),
+                                progress: progress,
+                                buffered: buffered,
+                                total: duration,
+                                progressBarColor: Colors.white,
+                                baseBarColor: Colors.white24,
+                                bufferedBarColor: Colors.white38,
+                                thumbColor: Colors.white,
+                                thumbGlowColor: Colors.white.withValues(
+                                  alpha: 0.25,
+                                ),
+                                barHeight: 2,
+                                thumbRadius: 5,
+                                thumbGlowRadius: 10,
+                                onDragStart: _onProgressDragStart,
+                                onDragUpdate: _onProgressDragUpdate,
+                                onDragEnd: _onProgressDragEnd,
+                                onSeek: _onProgressSeek,
+                              ),
+                            ),
+                          );
+
+                          if (_immersive) {
+                            return immersiveProgressBar;
                           }
 
                           final slider = SliderTheme(
@@ -1429,14 +1444,11 @@ class _VideoPageState extends State<_VideoPage> {
                               secondaryActiveTrackColor: Colors.white38,
                               thumbColor: Colors.white,
                             ),
-                            child: SizedBox(
-                              height: 40,
-                              child: Slider(
-                              key: const ValueKey('vertical-feed-progress-slider'),
+                            child: Slider(
                               min: 0,
                               max: duration.toDouble(),
-                              value: (_seeking
-                                      ? _seekPreviewValue
+                              value: (player.isSeeking.value
+                                      ? player.seekPosition.value
                                       : progress)
                                   .clamp(0, duration)
                                   .toDouble(),
@@ -1446,13 +1458,8 @@ class _VideoPageState extends State<_VideoPage> {
                               onChangeStart: _onSeekStart,
                               onChanged: _onSeekUpdate,
                               onChangeEnd: _onSeekEnd,
-                              ),
                             ),
                           );
-
-                          if (_immersive) {
-                            return slider;
-                          }
 
                           return Column(
                             mainAxisSize: MainAxisSize.min,
