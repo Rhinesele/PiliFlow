@@ -853,13 +853,9 @@ class _VideoPageState extends State<_VideoPage> {
   }
 
   void _onProgressDragEnd() {
-    final player = controller.player;
-    if (player.isSeeking.value) {
-      player.onSeekEnd();
-    }
-    if (mounted && _seeking) {
-      setState(() => _seeking = false);
-    }
+    // ProgressBar 的回调顺序是先 onDragEnd、再 onSeek。
+    // 因此这里不能提前结束 seek 状态或清除预览；
+    // 等 onSeek 调用 _commitSeek 后，再统一完成跳转和状态清理。
   }
 
   void _onProgressSeek(int milliseconds) {
