@@ -178,6 +178,7 @@ class _VideoPageState extends State<_VideoPage> {
   Timer? _bufferTimer;
 
   bool _immersive = false;
+  double _lastTapGlobalY = -1;
   bool _wasImmersiveBeforeSeek = false;
   bool _seeking = false;
   double _seekPreviewValue = 0;
@@ -930,7 +931,22 @@ class _VideoPageState extends State<_VideoPage> {
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: _toggleImmersive,
+                  onTapDown: (details) {
+                    _lastTapGlobalY = details.globalPosition.dy;
+                  },
+                  onTap: () {
+                    // 底部进度条区域由 Slider 独占交互，不把点按误判为
+                    // 全屏单击，从而避免切换沉浸模式并重建正在交互的 Slider。
+                    final screenHeight = MediaQuery.sizeOf(context).height;
+                    final bottomInset = MediaQuery.paddingOf(context).bottom;
+                    final progressBottom =
+                        bottomInset > 0 ? bottomInset + 10 : 20.0;
+                    if (_lastTapGlobalY >=
+                        screenHeight - progressBottom - 56) {
+                      return;
+                    }
+                    _toggleImmersive();
+                  },
                   onDoubleTap: _handleDoubleTap,
                   onLongPressStart: (_) => _startFastPlayback(),
                   onLongPressEnd: (_) => _stopFastPlayback(),
@@ -1413,7 +1429,10 @@ class _VideoPageState extends State<_VideoPage> {
                               secondaryActiveTrackColor: Colors.white38,
                               thumbColor: Colors.white,
                             ),
-                            child: Slider(
+                            child: SizedBox(
+                              height: 40,
+                              child: Slider(
+                              key: const ValueKey('vertical-feed-progress-slider'),
                               min: 0,
                               max: duration.toDouble(),
                               value: (_seeking
@@ -1427,26 +1446,18 @@ class _VideoPageState extends State<_VideoPage> {
                               onChangeStart: _onSeekStart,
                               onChanged: _onSeekUpdate,
                               onChangeEnd: _onSeekEnd,
+                              ),
                             ),
                           );
 
-                          // 进度条位于整屏点击手势的子树中。显式提供自己的
-                          // 点击手势，让点按/拖动优先由 Slider 处理，避免
-                          // 沉浸模式下父级 onTap 抢走事件并重建进度条。
-                          final interactiveSlider = GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {},
-                            child: slider,
-                          );
-
                           if (_immersive) {
-                            return interactiveSlider;
+                            return slider;
                           }
 
                           return Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              interactiveSlider,
+                              slider,
                               const SizedBox(height: 6),
                               Row(
                                 children: [
