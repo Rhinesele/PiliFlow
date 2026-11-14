@@ -798,7 +798,15 @@ class _VideoPageState extends State<_VideoPage> {
     final v = value.clamp(0, duration.toDouble()).toDouble().round();
     controller.player.seekPosition.value = v;
     controller.player.isSeeking.value = false;
-    controller.player.seekTo(Duration(seconds: v));
+    // 竖屏信息流的拖动跳转不等待 buffer.first：部分流媒体在拖动后
+    // 不一定及时产生新的缓冲事件，等待它会表现为跳转延迟甚至无响应。
+    // isSeek:false 会直接调用底层播放器 seek，仍复用 PiliPlus 原生控制器。
+    unawaited(
+      controller.player.seekTo(
+        Duration(seconds: v),
+        isSeek: false,
+      ),
+    );
     _bufferTimer?.cancel();
     _bufferTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted && !controller.player.isBuffering.value) {
@@ -833,24 +841,37 @@ class _VideoPageState extends State<_VideoPage> {
     final cellW = data.imgXSize;
     final cellH = data.imgYSize;
     if (cellW <= 0 || cellH <= 0) return null;
-    final scale = maxW / cellW;
+    // B站视频预览图是由多帧组成的雪碧图。
+    // 使用固定视口和 OverflowBox 精确裁出单帧，避免
+    // FittedBox 在不同屏幕比例下重新缩放整张雪碧图，导致错帧或裁切异常。
+    final frameWidth = maxW;
+    final frameHeight = frameWidth * cellH / cellW;
+    final sheetWidth = frameWidth * data.imgXLen;
+    final sheetHeight = frameHeight * data.imgYLen;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: SizedBox(
-        width: maxW,
-        height: cellH * scale,
-        child: FittedBox(
-          fit: BoxFit.none,
-          alignment: Alignment(
-            data.imgXLen <= 1 ? 0 : -1 + (col * 2 + 1) / data.imgXLen,
-            data.imgYLen <= 1 ? 0 : -1 + (row * 2 + 1) / data.imgYLen,
-          ),
-          child: Image.network(
-            data.image[imageIndex],
-            width: cellW * data.imgXLen * scale,
-            height: cellH * data.imgYLen * scale,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        width: frameWidth,
+        height: frameHeight,
+        child: ClipRect(
+          child: OverflowBox(
+            alignment: Alignment(
+              data.imgXLen <= 1 ? 0 : -1 + (col * 2 + 1) / data.imgXLen,
+              data.imgYLen <= 1 ? 0 : -1 + (row * 2 + 1) / data.imgYLen,
+            ),
+            minWidth: sheetWidth,
+            maxWidth: sheetWidth,
+            minHeight: sheetHeight,
+            maxHeight: sheetHeight,
+            child: Image.network(
+              data.image[imageIndex],
+              width: sheetWidth,
+              height: sheetHeight,
+              fit: BoxFit.fill,
+              filterQuality: FilterQuality.medium,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
           ),
         ),
       ),
@@ -1409,14 +1430,23 @@ class _VideoPageState extends State<_VideoPage> {
                             ),
                           );
 
+                          // 进度条位于整屏点击手势的子树中。显式提供自己的
+                          // 点击手势，让点按/拖动优先由 Slider 处理，避免
+                          // 沉浸模式下父级 onTap 抢走事件并重建进度条。
+                          final interactiveSlider = GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {},
+                            child: slider,
+                          );
+
                           if (_immersive) {
-                            return slider;
+                            return interactiveSlider;
                           }
 
                           return Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              slider,
+                              interactiveSlider,
                               const SizedBox(height: 6),
                               Row(
                                 children: [
