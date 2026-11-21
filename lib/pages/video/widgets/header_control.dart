@@ -1830,6 +1830,23 @@ class HeaderControlState extends State<HeaderControl>
                         ),
                       ),
                     ),
+                    // 从视频详情页进入竖屏模式
+                    SizedBox(
+                      width: btnWidth,
+                      height: btnHeight,
+                      child: IconButton(
+                        tooltip: '竖屏模式',
+                        style: btnStyle,
+                        onPressed: () {
+                          Get.toNamed('/verticalFeed');
+                        },
+                        icon: const Icon(
+                          Icons.amp_stories_outlined,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                   ],
                   if (kDebugMode || plPlayerController.enableSponsorBlock)
                     SizedBox(
