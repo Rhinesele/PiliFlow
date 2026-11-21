@@ -96,15 +96,16 @@ class _VerticalFeedPageState extends State<VerticalFeedPage>
               : PageView.builder(
                   controller: pageController,
                   scrollDirection: Axis.vertical,
+                  allowImplicitScrolling: true,
                   physics: panelOpen
                       ? const NeverScrollableScrollPhysics()
                       : const PageScrollPhysics(),
                   itemCount: controller.videos.length,
                   onPageChanged: (index) {
                     controller.closePanel();
-                    controller.playIndex(index);
+                    unawaited(controller.playIndex(index));
                     if (index >= controller.videos.length - 3) {
-                      controller.loadMore();
+                      unawaited(controller.loadMore());
                     }
                   },
                   itemBuilder: (context, index) {
@@ -170,15 +171,22 @@ class _VideoPage extends StatefulWidget {
   State<_VideoPage> createState() => _VideoPageState();
 }
 
-class _VideoPageState extends State<_VideoPage> {
+class _VideoPageState extends State<_VideoPage>
+    with SingleTickerProviderStateMixin {
   Worker? _panelWorker;
   Worker? _indexWorker;
+  Worker? _bufferWorker;
 
   double? _previousSpeed;
   bool _speedBoostActive = false;
   bool _showPaused = false;
   bool _showBuffering = false;
   Timer? _bufferTimer;
+
+  late final AnimationController _bufferPulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
 
   bool _immersive = false;
   double _lastTapGlobalY = -1;
@@ -201,6 +209,30 @@ class _VideoPageState extends State<_VideoPage> {
   @override
   void initState() {
     super.initState();
+
+    _bufferPulse.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _bufferPulse.reverse();
+      } else if (status == AnimationStatus.dismissed) {
+        if (_showBuffering) _bufferPulse.forward();
+      }
+    });
+
+    _bufferWorker = ever(controller.player.isBuffering, (buffering) {
+      if (!mounted) return;
+      final show = buffering == true && controller.ready.value;
+      if (show == _showBuffering) return;
+      setState(() => _showBuffering = show);
+      if (show) {
+        if (!_bufferPulse.isAnimating) {
+          _bufferPulse.forward(from: 0);
+        }
+      } else {
+        _bufferPulse
+          ..stop()
+          ..value = 1.0;
+      }
+    });
 
     _panelWorker = ever(controller.panelOpen, (open) {
       if (!open) {
@@ -870,7 +902,9 @@ class _VideoPageState extends State<_VideoPage> {
   void dispose() {
     _panelWorker?.dispose();
     _indexWorker?.dispose();
+    _bufferWorker?.dispose();
     _bufferTimer?.cancel();
+    _bufferPulse.dispose();
 
     if (_speedBoostActive) {
       controller.player.setPlaybackSpeed(_previousSpeed ?? 1.0);
@@ -950,11 +984,24 @@ class _VideoPageState extends State<_VideoPage> {
 
                         if (!controller.ready.value ||
                             videoController == null) {
-                          return Center(
-                            child: CircularProgressIndicator(
-                              color: primary,
-                            ),
-                          );
+                          final cover = controller.currentItem?.cover;
+                          if (cover != null && cover.isNotEmpty) {
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                NetworkImgLayer(
+                                  src: cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  type: ImageType.def,
+                                ),
+                                const ColoredBox(
+                                  color: Color(0x33000000),
+                                ),
+                              ],
+                            );
+                          }
+                          return const SizedBox.shrink();
                         }
 
                         final vw = controller.player.width ?? 0;
@@ -1294,41 +1341,8 @@ class _VideoPageState extends State<_VideoPage> {
                             ),
                           ),
                         ),
-                      Obx(() {
-                        final buffering =
-                            controller.player.isBuffering.value;
-
-                        if (buffering &&
-                            controller.ready.value &&
-                            !_showBuffering) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) {
-                              setState(() => _showBuffering = true);
-                            }
-                          });
-                        } else if (!buffering && _showBuffering) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) {
-                              setState(() => _showBuffering = false);
-                            }
-                          });
-                        }
-
-                        if (!_showBuffering) {
-                          return const SizedBox.shrink();
-                        }
-
-                        return const Center(
-                          child: Text(
-                            '加载中...',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }),
+                      // 缓冲中改为底部进度条闪烁，不再显示「加载中...」
+                      const SizedBox.shrink(),
                       if (_seeking && controller.player.showSeekPreview)
                         Positioned(
                           left: 0,
@@ -1426,7 +1440,7 @@ class _VideoPageState extends State<_VideoPage> {
                             return immersiveProgressBar;
                           }
 
-                          final slider = SliderTheme(
+                          final sliderCore = SliderTheme(
                             data: SliderTheme.of(context).copyWith(
                               trackHeight: 2,
                               thumbShape: const RoundSliderThumbShape(
@@ -1456,6 +1470,21 @@ class _VideoPageState extends State<_VideoPage> {
                               onChangeEnd: _onSeekEnd,
                             ),
                           );
+
+                          // 缓冲时进度条明暗闪烁
+                          final slider = _showBuffering
+                              ? AnimatedBuilder(
+                                  animation: _bufferPulse,
+                                  builder: (context, child) {
+                                    final t = _bufferPulse.value;
+                                    return Opacity(
+                                      opacity: 0.35 + 0.65 * t,
+                                      child: child,
+                                    );
+                                  },
+                                  child: sliderCore,
+                                )
+                              : sliderCore;
 
                           return Column(
                             mainAxisSize: MainAxisSize.min,
