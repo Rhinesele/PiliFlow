@@ -865,6 +865,30 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         },
       ),
 
+      /// 竖屏模式（放在倍速右侧、全屏左侧）
+      BottomControlType.verticalFeed => ComBtn(
+        width: widgetWidth,
+        height: 30,
+        tooltip: '竖屏模式',
+        icon: const Icon(Icons.amp_stories, size: 22, color: Colors.white),
+        onTap: () {
+          final bvid = plPlayerController.bvid;
+          final cid = plPlayerController.cid;
+          if (cid == null) {
+            return;
+          }
+          Get.toNamed(
+            '/verticalFeed',
+            arguments: {
+              'bvid': bvid,
+              'cid': cid,
+              'aid': IdUtils.bv2av(bvid),
+              'progress': plPlayerController.positionInMilliseconds,
+            },
+          );
+        },
+      ),
+
       /// 全屏
       BottomControlType.fullscreen => ComBtn(
         width: widgetWidth,
@@ -902,6 +926,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       .subtitle,
       .speed,
       if (isNotFileSource && flag) .qa,
+      // 竖屏入口：紧挨全屏左侧（1.0X 右侧）
+      if (isNotFileSource) .verticalFeed,
       if (!plPlayerController.isDesktopPip) .fullscreen,
     ];
     return PlayerBar(
