@@ -220,7 +220,6 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     closePanel();
 
     currentIndex.value = index;
-    ready.value = false;
     liking.value = false;
     coining.value = false;
     faving.value = false;
@@ -230,6 +229,12 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     final item = videos[index];
     final bvid = item.bvid;
     final cid = item.cid;
+
+    // 有缓存时不立刻 ready=false，减少切页黑屏闪一下
+    final hasUrlCache = bvid != null && _urlCache.containsKey(bvid);
+    if (!hasUrlCache) {
+      ready.value = false;
+    }
 
     ownerName.value = item.owner?.name ?? '';
     ownerMid.value = item.owner?.mid ?? 0;
@@ -258,7 +263,10 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
     unawaited(_prefetchAround(index));
 
     try {
-      await player.pause(notify: false, isInterrupt: true);
+      // 有缓存时轻量切换，避免每次切页都强打断导致明显卡顿
+      if (!hasUrlCache) {
+        await player.pause(notify: false, isInterrupt: true);
+      }
 
       String? videoUrl;
       String? audioUrl;
