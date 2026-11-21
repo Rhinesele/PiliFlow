@@ -115,11 +115,60 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
 
   String formatCount(num n) => NumUtils.numFormat(n);
 
+  /// 从详情页带入的初始进度（毫秒）
+  int? _initialProgressMs;
+
   @override
   void onInit() {
     super.onInit();
     player.isVertical = true;
     player.addStatusLister(_onPlayerStatus);
+
+    final args = Get.arguments;
+    if (args is Map) {
+      final aid = args['aid'];
+      final bvid = args['bvid'] as String?;
+      final cid = args['cid'];
+      final progress = args['progress'];
+      if (progress is int && progress > 0) {
+        _initialProgressMs = progress;
+      } else if (progress is num && progress > 0) {
+        _initialProgressMs = progress.toInt();
+      }
+
+      if (bvid != null &&
+          bvid.isNotEmpty &&
+          cid != null &&
+          (cid is int || cid is num)) {
+        final cidInt = cid is int ? cid : (cid as num).toInt();
+        final aidInt = aid is int
+            ? aid
+            : (aid is num ? aid.toInt() : null);
+
+        // 用当前详情页视频作为竖屏列表第一条
+        final item = RcmdVideoItemAppModel.fromJson({
+          'bvid': bvid,
+          'title': args['title'] ?? '',
+          'cover': args['cover'] ?? '',
+          'param': '${aidInt ?? 0}',
+          'card_goto': 'av',
+          'player_args': {
+            if (aidInt != null) 'aid': aidInt,
+            'cid': cidInt,
+            'duration': 0,
+          },
+          'args': {
+            'up_name': args['ownerName'] ?? '',
+            'up_id': args['ownerMid'] ?? 0,
+          },
+        });
+        videos.add(item);
+        unawaited(playIndex(0));
+        unawaited(loadMore());
+        return;
+      }
+    }
+
     loadMore();
   }
 
@@ -334,6 +383,10 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
         return;
       }
 
+      // 详情页带入的进度只在第一次切入时使用
+      final seekMs = _initialProgressMs;
+      _initialProgressMs = null;
+
       await player.setDataSource(
         NetworkSource(videoSource: videoUrl, audioSource: audioUrl),
         duration: timeLength == null
@@ -347,6 +400,9 @@ class VerticalFeedController extends GetxController with ScrollOrRefreshMixin {
         videoType: VideoType.ugc,
         width: vw,
         height: vh,
+        seekTo: seekMs != null && seekMs > 0
+            ? Duration(milliseconds: seekMs)
+            : null,
       );
 
       if (_disposed || token != _loadToken) return;
