@@ -7,6 +7,7 @@ enum BottomControlType {
   fit,
   subtitle,
   speed,
+  verticalFeed,
   fullscreen,
   viewPoints,
   superResolution,
