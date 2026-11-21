@@ -82,16 +82,68 @@ jobs:
               shell: pwsh
               run: lib/scripts/patch.ps1 android
 
-            - name: Write key
+            - name: Write and verify signing key
               if: github.event_name == 'workflow_dispatch'
+              shell: bash
+              env:
+                  SIGN_KEYSTORE_BASE64: ${{ secrets.SIGN_KEYSTORE_BASE64 }}
+                  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+                  KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+                  KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
               run: |
-                  if [ ! -z "${{ secrets.SIGN_KEYSTORE_BASE64 }}" ]; then
-                    echo "${{ secrets.SIGN_KEYSTORE_BASE64 }}" | base64 --decode > android/app/key.jks
-                    echo storeFile='key.jks' >> android/key.properties
-                    echo storePassword='${{ secrets.KEYSTORE_PASSWORD }}' >> android/key.properties
-                    echo keyAlias='${{ secrets.KEY_ALIAS }}' >> android/key.properties
-                    echo keyPassword='${{ secrets.KEY_PASSWORD }}' >> android/key.properties
+                  set -euo pipefail
+
+                  for name in SIGN_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+                    if [ -z "${!name}" ]; then
+                      echo "::error::Missing or empty GitHub Actions secret: $name"
+                      exit 1
+                    fi
+                  done
+
+                  if ! printf '%s' "$SIGN_KEYSTORE_BASE64" | base64 --decode > android/app/key.jks; then
+                    echo "::error::SIGN_KEYSTORE_BASE64 is not valid Base64."
+                    exit 1
                   fi
+
+                  if [ ! -s android/app/key.jks ]; then
+                    echo "::error::Decoded keystore is empty."
+                    exit 1
+                  fi
+
+                  if ! keytool -list \
+                    -keystore android/app/key.jks \
+                    -storepass "$KEYSTORE_PASSWORD" \
+                    -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+                    echo "::error::Keystore validation failed. Check SIGN_KEYSTORE_BASE64, KEYSTORE_PASSWORD, and KEY_ALIAS."
+                    exit 1
+                  fi
+
+                  echo "Keystore and alias validation passed."
+
+                  python3 - <<'PY'
+                  import os
+                  from pathlib import Path
+
+                  def escape(value):
+                      value = value.replace("\\", "\\\\")
+                      for char in (":", "=", "#", "!"):
+                          value = value.replace(char, "\\" + char)
+                      if value.startswith(" "):
+                          value = "\\" + value
+                      return value
+
+                  values = {
+                      "storeFile": "key.jks",
+                      "storePassword": os.environ["KEYSTORE_PASSWORD"],
+                      "keyAlias": os.environ["KEY_ALIAS"],
+                      "keyPassword": os.environ["KEY_PASSWORD"],
+                  }
+
+                  Path("android/key.properties").write_text(
+                      "".join(f"{key}={escape(value)}\n" for key, value in values.items()),
+                      encoding="utf-8",
+                  )
+                  PY
 
             - name: Set and Extract version
               if: ${{ github.event_name == 'workflow_dispatch' }}
