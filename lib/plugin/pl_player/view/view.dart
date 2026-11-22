@@ -883,6 +883,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
               'bvid': bvid,
               'cid': cid,
               'aid': IdUtils.bv2av(bvid),
+              'title': videoDetail.title,
               'progress': plPlayerController.positionInMilliseconds,
             },
           );
